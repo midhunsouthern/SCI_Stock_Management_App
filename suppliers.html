@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SCI — Suppliers</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; max-width: 1100px; margin: auto; }
+    h1 { margin: 0 0 12px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    input, textarea, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+    button { cursor: pointer; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; }
+    .grow { flex:1 1 220px; }
+    .muted { color:#666; font-size:14px; }
+    table { width:100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align:left; }
+    th { background:#fafafa; }
+    .right { text-align:right; }
+    /* Nav */
+    nav { display:flex; gap:12px; align-items:center; margin-bottom:16px; }
+    .tab { padding:8px 12px; border:1px solid #e5e5e5; border-radius:10px; text-decoration:none; color:#222; }
+    .tab:hover { background:#f7f7f7; }
+    .tab.active { background:#111; color:#fff; border-color:#111; }
+    .spacer { flex:1; }
+  </style>
+</head>
+<body>
+  <!-- NAV -->
+  <nav>
+    <a class="tab" href="/index.html">Item Master</a>
+    <a class="tab" href="/batches.html">Receive (Batches)</a>
+    <a class="tab" href="/consumption.html">Consumption</a>
+    <a class="tab active" href="/suppliers.html">Suppliers</a>
+    <span class="spacer"></span>
+    <a class="tab" href="/dashboard.html">Dashboard</a>
+  </nav>
+
+  <h1>SCI — Suppliers</h1>
+  <p class="muted">Add suppliers and map preferred vendors per item.</p>
+
+  <!-- Add Supplier -->
+  <div class="card">
+    <h3>Add Supplier</h3>
+    <div class="row">
+      <input id="sup_name" class="grow" placeholder="Supplier name" />
+      <input id="sup_emails" class="grow" placeholder="Emails (comma-separated)" />
+      <input id="sup_phone" class="grow" placeholder="Phone" />
+      <input id="sup_gstin" class="grow" placeholder="GSTIN" />
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <textarea id="sup_address" class="grow" rows="2" placeholder="Address"></textarea>
+      <input id="sup_terms" class="grow" placeholder="Payment terms" />
+      <input id="sup_lead" class="grow" type="number" step="1" placeholder="Lead time (days)" />
+      <select id="sup_active" style="width:150px">
+        <option value="true" selected>Active</option>
+        <option value="false">Inactive</option>
+      </select>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button id="addSupplierBtn">Add Supplier</button>
+      <span id="supMsg" class="muted"></span>
+    </div>
+  </div>
+
+  <!-- Map Item ↔ Supplier -->
+  <div class="card">
+    <h3>Map Item to Supplier</h3>
+    <div class="row">
+      <select id="itemSelect" class="grow"></select>
+      <select id="supplierSelect" class="grow"></select>
+      <input id="map_rate" class="grow" type="number" step="0.01" placeholder="Last rate (₹/UOM)" />
+      <input id="map_lead" class="grow" type="number" step="1" placeholder="Avg lead time (days)" />
+      <label><input id="map_pref" type="checkbox" /> Preferred</label>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button id="addMapBtn">Link Item & Supplier</button>
+      <span id="mapMsg" class="muted"></span>
+    </div>
+  </div>
+
+  <!-- Lists -->
+  <div class="card">
+    <h3>Suppliers</h3>
+    <table>
+      <thead><tr><th>Name</th><th>Emails</th><th>Phone</th><th>GSTIN</th><th>Active</th><th>Lead (d)</th></tr></thead>
+      <tbody id="supBody"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Item ↔ Supplier Map</h3>
+    <div class="row" style="margin-bottom:8px;">
+      <select id="filterItem" class="grow"></select>
+      <button id="refreshMapBtn">Refresh</button>
+    </div>
+    <table>
+      <thead><tr><th>Item</th><th>Supplier</th><th class="right">Last rate</th><th class="right">Avg lead (d)</th><th>Preferred</th></tr></thead>
+      <tbody id="mapBody"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- Supabase -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
+  <script>
+    const SUPABASE_URL = "https://yifgximvlqblnvxsmizx.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpZmd4aW12bHFibG52eHNtaXp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4MDIwNjMsImV4cCI6MjA3MDM3ODA2M30.Q6Bb7GCsZLSz-pjzHi0T-FTRx1uWkb1zu68AGnCiUhw";
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const $ = id => document.getElementById(id);
+
+    async function loadItemsInto(selectId) {
+      const sel = $(selectId);
+      sel.innerHTML = '<option>Loading items…</option>';
+      const { data, error } = await client.from('items').select('id,item_id,item_name').order('item_id');
+      if (error) { sel.innerHTML = '<option>Error</option>'; return; }
+      sel.innerHTML = '<option value="">All items</option>' + data.map(r =>
+        `<option value="${r.id}">${r.item_id} — ${r.item_name}</option>`
+      ).join('');
+    }
+
+    async function loadSuppliersInto(selectId, placeholder='Select supplier…') {
+      const sel = $(selectId);
+      sel.innerHTML = '<option>Loading suppliers…</option>';
+      const { data, error } = await client.from('suppliers').select('id,name').order('name');
+      if (error) { sel.innerHTML = '<option>Error</option>'; return; }
+      sel.innerHTML = `<option value="">${placeholder}</option>` + data.map(r =>
+        `<option value="${r.id}">${r.name}</option>`
+      ).join('');
+    }
+
+    async function listSuppliers() {
+      const tbody = $('supBody');
+      const { data, error } = await client.from('suppliers')
+        .select('id,name,emails,phone,gstin,is_active,lead_time_days')
+        .order('name');
+      if (error) { tbody.innerHTML = `<tr><td colspan="6">Error: ${error.message}</td></tr>`; return; }
+      if (!data || !data.length) { tbody.innerHTML = `<tr><td colspan="6" class="muted">No suppliers yet.</td></tr>`; return; }
+      tbody.innerHTML = data.map(r => `
+        <tr>
+          <td>${r.name}</td>
+          <td>${r.emails || ''}</td>
+          <td>${r.phone || ''}</td>
+          <td>${r.gstin || ''}</td>
+          <td>${r.is_active ? 'Yes' : 'No'}</td>
+          <td class="right">${r.lead_time_days ?? ''}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function listMappings() {
+      const tbody = $('mapBody');
+      const filterItem = $('filterItem').value;
+      let query = client
+        .from('item_suppliers')
+        .select(`
+          id,
+          last_rate,
+          avg_lead_time_days,
+          preferred,
+          items:id(item_id,item_name),
+          suppliers:id(supplier_id)  -- alias not supported in UMD; we’ll fetch via joins below
+        `);
+      // Since cross-table select aliases are limited in UMD, do separate joined fetch:
+      const { data, error } = await client.rpc('get_item_supplier_map', {});
+      // If the RPC isn't set up, fallback to a manual join approach:
+      if (error || !data) {
+        // Manual: fetch maps, then fetch related names
+        const { data: maps, error: mapErr } = await client.from('item_suppliers').select('*');
+        if (mapErr) { tbody.innerHTML = `<tr><td colspan="5">Error: ${mapErr.message}</td></tr>`; return; }
+        // Fetch items and suppliers once
+        const [{ data: items }, { data: sups }] = await Promise.all([
+          client.from('items').select('id,item_id,item_name'),
+          client.from('suppliers').select('id,name')
+        ]);
+        const itemById = new Map((items||[]).map(i => [i.id, i]));
+        const supById  = new Map((sups||[]).map(s => [s.id, s]));
+        const filtered = (filterItem ? maps.filter(m => m.item_id === filterItem) : maps);
+
+        if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="5" class="muted">No mappings yet.</td></tr>`; return; }
+        tbody.innerHTML = filtered.map(m => {
+          const it = itemById.get(m.item_id) || {};
+          const sp = supById.get(m.supplier_id) || {};
+          return `
+            <tr>
+              <td>${(it.item_id || '')} — ${(it.item_name || '')}</td>
+              <td>${sp.name || ''}</td>
+              <td class="right">${m.last_rate ?? ''}</td>
+              <td class="right">${m.avg_lead_time_days ?? ''}</td>
+              <td>${m.preferred ? 'Yes' : 'No'}</td>
+            </tr>
+          `;
+        }).join('');
+        return;
+      }
+    }
+
+    async function addSupplier() {
+      const msg = $('supMsg'); msg.textContent = 'Saving…';
+      const payload = {
+        name: $('sup_name').value.trim(),
+        emails: $('sup_emails').value.trim() || null,
+        phone: $('sup_phone').value.trim() || null,
+        gstin: $('sup_gstin').value.trim() || null,
+        address: $('sup_address').value.trim() || null,
+        payment_terms: $('sup_terms').value.trim() || null,
+        lead_time_days: Number($('sup_lead').value || 0),
+        is_active: $('sup_active').value === 'true'
+      };
+      if (!payload.name) { msg.textContent = 'Name is required.'; return; }
+      const { error } = await client.from('suppliers').insert([payload]);
+      if (error) { msg.textContent = 'Error: ' + error.message; return; }
+      msg.textContent = 'Added supplier.';
+      ['sup_name','sup_emails','sup_phone','sup_gstin','sup_address','sup_terms','sup_lead'].forEach(id => $(id).value='');
+      await loadSuppliersInto('supplierSelect');
+      await listSuppliers();
+    }
+
+    async function addMapping() {
+      const msg = $('mapMsg'); msg.textContent = 'Linking…';
+      const item_id = $('itemSelect').value;
+      const supplier_id = $('supplierSelect').value;
+      const last_rate = Number($('map_rate').value || 0);
+      const avg_lead_time_days = Number($('map_lead').value || 0);
+      const preferred = $('map_pref').checked;
+
+      if (!item_id || !supplier_id) { msg.textContent = 'Choose item and supplier.'; return; }
+
+      const { error } = await client.from('item_suppliers').insert([{ item_id, supplier_id, last_rate, avg_lead_time_days, preferred }]);
+      if (error) { msg.textContent = 'Error: ' + error.message; return; }
+      msg.textContent = 'Linked.';
+      $('map_rate').value=''; $('map_lead').value=''; $('map_pref').checked=false;
+      await listMappings();
+    }
+
+    async function init() {
+      await Promise.all([
+        loadItemsInto('itemSelect'),
+        loadItemsInto('filterItem'),
+        loadSuppliersInto('supplierSelect'),
+        listSuppliers()
+      ]);
+      await listMappings();
+      $('addSupplierBtn').addEventListener('click', addSupplier);
+      $('addMapBtn').addEventListener('click', addMapping);
+      $('refreshMapBtn').addEventListener('click', listMappings);
+      $('filterItem').addEventListener('change', listMappings);
+    }
+
+    init();
+  </script>
+</body>
+</html>
