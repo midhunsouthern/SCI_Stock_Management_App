@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SCI — Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; max-width: 1100px; margin: auto; }
+    h1 { margin: 0 0 12px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
+    th { background:#fafafa; }
+    .right { text-align: right; }
+    .muted { color:#666; font-size:14px; }
+    .pill { display:inline-block; padding:4px 8px; border-radius:10px; font-size:12px; }
+    .ok { background:#e8f7ee; color:#146c2e; }
+    .warn { background:#fff1e5; color:#9a5a00; }
+    .danger { background:#fde7ea; color:#9f1c28; }
+    /* Nav */
+    nav { display:flex; gap:12px; align-items:center; margin-bottom:16px; }
+    .tab { padding:8px 12px; border:1px solid #e5e5e5; border-radius:10px; text-decoration:none; color:#222; }
+    .tab:hover { background:#f7f7f7; }
+    .tab.active { background:#111; color:#fff; border-color:#111; }
+    .spacer { flex:1; }
+    .kpis { display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+    .kpi { border:1px solid #eee; border-radius:12px; padding:12px; }
+    .kpi h2 { margin:0 0 6px; font-size:14px; color:#555; }
+    .kpi .val { font-size:22px; font-weight:700; }
+  </style>
+</head>
+<body>
+  <!-- NAV -->
+  <nav>
+    <a class="tab" href="/index.html">Item Master</a>
+    <a class="tab" href="/batches.html">Receive (Batches)</a>
+    <a class="tab" href="/consumption.html">Consumption</a>
+    <a class="tab" href="/suppliers.html" title="Coming soon">Suppliers</a>
+    <span class="spacer"></span>
+    <a class="tab active" href="/dashboard.html">Dashboard</a>
+  </nav>
+
+  <h1>SCI — Dashboard</h1>
+  <p class="muted">Live stock = Σ(IN) − Σ(OUT) per item. Low-stock flags are based on <i>min_stock</i> from Item Master.</p>
+
+  <div class="kpis">
+    <div class="kpi"><h2>Total Items</h2><div class="val" id="kpiItems">—</div></div>
+    <div class="kpi"><h2>Low-stock Items</h2><div class="val" id="kpiLow">—</div></div>
+    <div class="kpi"><h2>Today Movements</h2><div class="val" id="kpiToday">—</div></div>
+    <div class="kpi"><h2>Total Stock (qty)</h2><div class="val" id="kpiQty">—</div></div>
+  </div>
+
+  <div class="card">
+    <h3>Current Stock by Item</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Item ID</th><th>Name</th><th>Category</th><th class="right">On-hand</th><th class="right">Min</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="stockBody">
+        <tr><td colspan="6" class="muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Supabase -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
+  <script>
+    const SUPABASE_URL = "https://yifgximvlqblnvxsmizx.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpZmd4aW12bHFibG52eHNtaXp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4MDIwNjMsImV4cCI6MjA3MDM3ODA2M30.Q6Bb7GCsZLSz-pjzHi0T-FTRx1uWkb1zu68AGnCiUhw";
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const $ = id => document.getElementById(id);
+    function fmt(n, d=2){ if(n==null||isNaN(n)) return '0'; return Number(n).toFixed(d); }
+
+    async function fetchItems() {
+      const { data, error } = await client.from('items').select('id,item_id,item_name,category,min_stock');
+      if (error) throw error;
+      return data || [];
+    }
+
+    async function fetchMovementsToday() {
+      // count IN/OUT today
+      const today = new Date().toISOString().slice(0,10); // YYYY-MM-DD
+      const { data, error } = await client
+        .from('movements')
+        .select('id', { count: 'exact', head: true })
+        .gte('movement_date', today + 'T00:00:00.000Z')
+        .lte('movement_date', today + 'T23:59:59.999Z');
+      if (error) return 0;
+      return data ? data.length : (typeof error?.count === 'number' ? error.count : 0);
+    }
+
+    async function fetchAllMovements() {
+      const { data, error } = await client.from('movements').select('item_id,movement_type,quantity');
+      if (error) throw error;
+      return data || [];
+    }
+
+    function computeStock(items, movements) {
+      const byItem = new Map();
+      for (const it of items) {
+        byItem.set(it.id, { item: it, in: 0, out: 0 });
+      }
+      for (const m of movements) {
+        if (!byItem.has(m.item_id)) continue;
+        if (m.movement_type === 'IN') byItem.get(m.item_id).in += Number(m.quantity || 0);
+        else if (m.movement_type === 'OUT') byItem.get(m.item_id).out += Number(m.quantity || 0);
+      }
+      const rows = [];
+      for (const [id, rec] of byItem.entries()) {
+        const onhand = (rec.in - rec.out);
+        rows.push({
+          id,
+          item_id: rec.item.item_id,
+          name: rec.item.item_name,
+          category: rec.item.category || '',
+          min: Number(rec.item.min_stock || 0),
+          onhand
+        });
+      }
+      return rows.sort((a,b)=> a.item_id.localeCompare(b.item_id));
+    }
+
+    function render(rows){
+      const tbody = $('stockBody');
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="muted">No items found.</td></tr>'; return; }
+
+      let lowCount = 0, totalQty = 0;
+      tbody.innerHTML = rows.map(r => {
+        totalQty += r.onhand;
+        const status = (r.onhand <= 0) ? '<span class="pill danger">Out of stock</span>'
+                      : (r.onhand < r.min) ? (lowCount++, '<span class="pill warn">Low</span>')
+                      : '<span class="pill ok">OK</span>';
+        return `
+          <tr>
+            <td>${r.item_id}</td>
+            <td>${r.name}</td>
+            <td>${r.category}</td>
+            <td class="right">${fmt(r.onhand, 3)}</td>
+            <td class="right">${fmt(r.min, 3)}</td>
+            <td>${status}</td>
+          </tr>
+        `;
+      }).join('');
+
+      $('kpiItems').textContent = rows.length;
+      $('kpiLow').textContent = lowCount;
+      $('kpiQty').textContent = fmt(totalQty, 3);
+    }
+
+    async function init(){
+      try {
+        const [items, movements] = await Promise.all([fetchItems(), fetchAllMovements()]);
+        const rows = computeStock(items, movements);
+        render(rows);
+        // Movements today (best-effort)
+        $('kpiToday').textContent = await fetchMovementsToday();
+      } catch (e) {
+        const tbody = $('stockBody');
+        tbody.innerHTML = `<tr><td colspan="6">Error: ${e.message||e}</td></tr>`;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
