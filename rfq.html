@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SCI — RFQ (Email Draft)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; max-width: 1100px; margin: auto; }
+    h1 { margin: 0 0 12px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    input, textarea, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+    button { cursor: pointer; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; }
+    .grow { flex:1 1 240px; }
+    .muted { color:#666; font-size:14px; }
+    table { width:100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align:left; }
+    th { background:#fafafa; }
+    .right { text-align:right; }
+    /* Nav */
+    nav { display:flex; gap:12px; align-items:center; margin-bottom:16px; }
+    .tab { padding:8px 12px; border:1px solid #e5e5e5; border-radius:10px; text-decoration:none; color:#222; }
+    .tab:hover { background:#f7f7f7; }
+    .tab.active { background:#111; color:#fff; border-color:#111; }
+    .spacer { flex:1; }
+    .chip { display:inline-block; padding:2px 8px; border:1px solid #ddd; border-radius:999px; margin:2px; font-size:12px; }
+  </style>
+</head>
+<body>
+  <!-- NAV -->
+  <nav>
+    <a class="tab" href="/index.html">Item Master</a>
+    <a class="tab" href="/batches.html">Receive (Batches)</a>
+    <a class="tab" href="/consumption.html">Consumption</a>
+    <a class="tab" href="/suppliers.html">Suppliers</a>
+    <span class="spacer"></span>
+    <a class="tab" href="/dashboard.html">Dashboard</a>
+    <a class="tab active" href="/rfq.html">RFQ</a>
+  </nav>
+
+  <h1>SCI — Request for Quotation</h1>
+  <p class="muted">Pick an item, quantity and target date, select suppliers, then click “Open in Email”.</p>
+
+  <div class="card">
+    <h3>RFQ Details</h3>
+    <div class="row">
+      <select id="itemSelect" class="grow"></select>
+      <input id="qty" class="grow" type="number" step="0.01" placeholder="Required quantity" />
+      <input id="targetDate" class="grow" type="date" />
+      <input id="subject" class="grow" placeholder="Email subject (auto-filled)" />
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <textarea id="notes" class="grow" rows="3" placeholder="Additional notes (optional)"></textarea>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Suppliers for this Item</h3>
+    <div id="supList" class="muted">Select an item to load mapped suppliers…</div>
+  </div>
+
+  <div class="card">
+    <h3>Preview</h3>
+    <p class="muted">We’ll generate an email with the table below.</p>
+    <table>
+      <thead><tr><th>Item</th><th>Qty</th><th>UOM</th><th>Target date</th></tr></thead>
+      <tbody id="previewBody"><tr><td colspan="4" class="muted">Fill the RFQ details.</td></tr></tbody>
+    </table>
+    <div class="row" style="margin-top:8px;">
+      <button id="openEmailBtn">Open in Email</button>
+      <button id="copyBodyBtn">Copy Body</button>
+      <span id="msg" class="muted"></span>
+    </div>
+  </div>
+
+  <!-- Supabase -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
+  <script>
+    const SUPABASE_URL = "https://yifgximvlqblnvxsmizx.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpZmd4aW12bHFibG52eHNtaXp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4MDIwNjMsImV4cCI6MjA3MDM3ODA2M30.Q6Bb7GCsZLSz-pjzHi0T-FTRx1uWkb1zu68AGnCiUhw";
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const $ = id => document.getElementById(id);
+    let itemCache = [], supplierCache = [], mapCache = [];
+
+    async function loadItems() {
+      const { data, error } = await client.from('items').select('id,item_id,item_name,uom').order('item_id');
+      if (!error) itemCache = data || [];
+      $('itemSelect').innerHTML = '<option value="">Select item…</option>' + itemCache.map(i =>
+        `<option value="${i.id}" data-code="${i.item_id}" data-name="${i.item_name}" data-uom="${i.uom||''}">
+          ${i.item_id} — ${i.item_name}
+        </option>`).join('');
+    }
+
+    async function loadSuppliersAndMap() {
+      const [sRes, mRes] = await Promise.all([
+        client.from('suppliers').select('id,name,emails,is_active').order('name'),
+        client.from('item_suppliers').select('item_id,supplier_id,last_rate,preferred')
+      ]);
+      supplierCache = sRes.data || [];
+      mapCache = mRes.data || [];
+    }
+
+    function supplierEmails(s){ 
+      // pick first email if multiple
+      const e = (s.emails||'').split(',').map(x=>x.trim()).filter(Boolean);
+      return e;
+    }
+
+    function renderSuppliersForItem(itemId) {
+      const supDiv = $('supList');
+      if (!itemId) { supDiv.textContent = 'Select an item to load mapped suppliers…'; return; }
+
+      const mapped = mapCache.filter(m => m.item_id === itemId);
+      // preferred first, then others
+      const pref = mapped.filter(m => m.preferred).map(m => m.supplier_id);
+      const recs = supplierCache
+        .filter(s => mapped.some(m => m.supplier_id === s.id))
+        .sort((a,b) => (pref.includes(b.id) - pref.includes(a.id)) || a.name.localeCompare(b.name));
+
+      if (!recs.length) { supDiv.innerHTML = '<span class="muted">No mapped suppliers. Add mappings in Suppliers page.</span>'; return; }
+
+      supDiv.innerHTML = recs.map(s => {
+        const emails = supplierEmails(s);
+        const emailChips = emails.length ? emails.map(e=>`<span class="chip">${e}</span>`).join('') : '<span class="muted">(no email)</span>';
+        return `
+          <label style="display:block; margin:6px 0;">
+            <input type="checkbox" class="supChk" value="${s.id}" data-emails="${emails.join(';')}">
+            <b>${s.name}</b> ${emailChips} ${s.is_active ? '' : '<span class="chip">inactive</span>'}
+          </label>
+        `;
+      }).join('');
+    }
+
+    function buildPreviewRow() {
+      const opt = $('itemSelect').selectedOptions[0];
+      if (!opt) return null;
+      const qty = Number($('qty').value || 0);
+      const date = $('targetDate').value || '';
+      const uom = opt.dataset.uom || '';
+      const code = opt.dataset.code || '';
+      const name = opt.dataset.name || '';
+      $('subject').value = $('subject').value || `RFQ — ${code} ${name} — Qty ${qty} ${uom}`;
+      return { code, name, qty, uom, date };
+    }
+
+    function renderPreview() {
+      const row = buildPreviewRow();
+      const tbody = $('previewBody');
+      if (!row || !row.qty) { tbody.innerHTML = '<tr><td colspan="4" class="muted">Fill the RFQ details.</td></tr>'; return; }
+      tbody.innerHTML = `
+        <tr>
+          <td>${row.code} — ${row.name}</td>
+          <td>${row.qty}</td>
+          <td>${row.uom}</td>
+          <td>${row.date || '-'}</td>
+        </tr>
+      `;
+    }
+
+    function selectedEmails() {
+      const chks = [...document.querySelectorAll('.supChk:checked')];
+      const all = [];
+      for (const c of chks) {
+        const arr = (c.dataset.emails || '').split(';').filter(Boolean);
+        all.push(...arr);
+      }
+      // remove dupes
+      return [...new Set(all)];
+    }
+
+    function buildEmailBody() {
+      const row = buildPreviewRow();
+      const notes = $('notes').value.trim();
+      const lines = [];
+      lines.push('Dear Supplier,');
+      lines.push('');
+      lines.push('Please share your best quote and delivery timeline for the following:');
+      lines.push('');
+      lines.push('| Item | Qty | UOM | Target date |');
+      lines.push('|---|---:|---|---|');
+      lines.push(`| ${row.code} — ${row.name} | ${row.qty} | ${row.uom} | ${row.date || '-'} |`);
+      if (notes) {
+        lines.push('');
+        lines.push('Notes:');
+        lines.push(notes);
+      }
+      lines.push('');
+      lines.push('Please include taxes, freight, and delivery terms. Thank you.');
+      lines.push('');
+      lines.push('Regards,');
+      lines.push('Southern Coil Industries');
+      return lines.join('\n');
+    }
+
+    function mailtoLink(toEmails, subject, body) {
+      const to = encodeURIComponent(toEmails.join(','));
+      const sub = encodeURIComponent(subject || 'RFQ');
+      const bod = encodeURIComponent(body);
+      return `mailto:${to}?subject=${sub}&body=${bod}`;
+    }
+
+    function openEmail() {
+      const emails = selectedEmails();
+      if (!emails.length) { $('msg').textContent = 'Select at least one supplier with email.'; return; }
+      const subject = $('subject').value.trim() || 'RFQ';
+      const body = buildEmailBody();
+      const url = mailtoLink(emails, subject, body);
+      window.location.href = url;
+    }
+
+    async function init() {
+      await Promise.all([loadItems(), loadSuppliersAndMap()]);
+      $('itemSelect').addEventListener('change', e => { renderSuppliersForItem(e.target.value); renderPreview(); });
+      ['qty','targetDate','subject','notes'].forEach(id => $(id).addEventListener('input', renderPreview));
+      $('openEmailBtn').addEventListener('click', openEmail);
+      $('copyBodyBtn').addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(buildEmailBody()); $('msg').textContent='Copied.'; } 
+        catch { $('msg').textContent='Copy failed.'; }
+      });
+      // set default target date to +7 days
+      const d = new Date(); d.setDate(d.getDate()+7); $('targetDate').value = d.toISOString().slice(0,10);
+    }
+
+    init();
+  </script>
+</body>
+</html>
