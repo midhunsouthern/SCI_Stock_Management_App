@@ -2,24 +2,42 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>SCI — Batches (Receive)</title>
+  <title>SCI — Receive (Batches)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; max-width: 1000px; margin: auto; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; max-width: 1100px; margin: auto; }
     h1 { margin: 0 0 12px; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
     input, textarea, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
     button { cursor: pointer; }
     .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; }
-    .grow { flex:1 1 220px; }
+    .grow { flex:1 1 240px; }
     .muted { color:#666; font-size:14px; }
     table { width:100%; border-collapse: collapse; margin-top: 8px; }
     th, td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align:left; }
+    th { background:#fafafa; }
+    .right { text-align:right; }
+    .warn { color:#c60; font-weight:600; }
+    /* Nav */
+    nav { display:flex; gap:12px; align-items:center; margin-bottom:16px; }
+    .tab { padding:8px 12px; border:1px solid #e5e5e5; border-radius:10px; text-decoration:none; color:#222; }
+    .tab:hover { background:#f7f7f7; }
+    .tab.active { background:#111; color:#fff; border-color:#111; }
+    .spacer { flex:1; }
   </style>
 </head>
 <body>
+  <!-- NAV -->
+  <nav>
+    <a class="tab" href="/index.html">Item Master</a>
+    <a class="tab active" href="/batches.html">Receive (Batches)</a>
+    <a class="tab" href="/consumption.html" title="Coming soon">Consumption</a>
+    <a class="tab" href="/suppliers.html" title="Coming soon">Suppliers</a>
+    <span class="spacer"></span>
+  </nav>
+
   <h1>SCI — Receive Batch</h1>
-  <p class="muted">Create a batch and auto-create box-wise IN lines in Movements.</p>
+  <p class="muted">Create a batch and auto-create box-wise <b>IN</b> lines in Movements. Transport cost is allocated per kg.</p>
 
   <div class="card">
     <h3>Batch Details</h3>
@@ -37,28 +55,36 @@
       <textarea id="boxWeights" class="grow" rows="3" placeholder="Box weights (comma-separated), e.g. 100,100,100,100,100"></textarea>
     </div>
     <div class="row" style="margin-top:8px;">
+      <button id="previewBtn">Preview Costs</button>
       <button id="saveBatchBtn">Save Batch & Create IN Lines</button>
       <span id="msg" class="muted"></span>
     </div>
   </div>
 
   <div class="card">
-    <h3>Recent Movements (this session)</h3>
+    <h3>Preview / This Session</h3>
     <table>
-      <thead><tr><th>Serial</th><th>Item</th><th>Qty</th><th>Unit cost</th><th>Total</th></tr></thead>
-      <tbody id="movBody"><tr><td colspan="5" class="muted">No entries yet.</td></tr></tbody>
+      <thead><tr><th>Serial</th><th>Item</th><th class="right">Qty</th><th class="right">Unit Basic</th><th class="right">Unit Transp</th><th class="right">Unit Cost</th><th class="right">Total</th></tr></thead>
+      <tbody id="movBody"><tr><td colspan="7" class="muted">No entries yet.</td></tr></tbody>
+      <tfoot>
+        <tr><th colspan="2" class="right">Totals</th><th id="tQty" class="right">0</th><th></th><th></th><th></th><th id="tVal" class="right">0.00</th></tr>
+      </tfoot>
     </table>
+    <p id="note" class="muted"></p>
   </div>
 
   <!-- Supabase -->
   <script src="https://unpkg.com/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
   <script>
+    // Supabase project
     const SUPABASE_URL = "https://yifgximvlqblnvxsmizx.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpZmd4aW12bHFibG52eHNtaXp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4MDIwNjMsImV4cCI6MjA3MDM3ODA2M30.Q6Bb7GCsZLSz-pjzHi0T-FTRx1uWkb1zu68AGnCiUhw";
     const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const $ = id => document.getElementById(id);
     function pad(n, w=3){ return String(n).padStart(w,'0'); }
+
+    let currentPreview = []; // cache for Save
 
     async function loadItems() {
       const sel = $('itemSelect');
@@ -71,33 +97,104 @@
         </option>`).join('');
     }
 
-    async function saveBatch() {
-      const msg = $('msg'); msg.textContent = 'Saving…';
-      const itemId = $('itemSelect').value;
-      if (!itemId) { msg.textContent = 'Select an item.'; return; }
+    function parseWeights() {
+      return $('boxWeights').value
+        .split(',')
+        .map(s => Number(s.trim()))
+        .filter(n => !isNaN(n) && n > 0);
+    }
 
-      const receivedDate = $('receivedDate').value;
+    function buildPreview() {
+      const itemOpt = $('itemSelect').selectedOptions[0];
+      if (!itemOpt || !itemOpt.value) return { ok:false, msg:'Select an item.' };
+
+      const itemId = itemOpt.value;
+      const itemCode = itemOpt.dataset.code;
+      const itemName = itemOpt.dataset.name;
+
+      const date = $('receivedDate').value;
+      if (!date) return { ok:false, msg:'Enter received date.' };
+
       const basicRate = Number($('basicRate').value || 0);
       const transportTotal = Number($('transportTotal').value || 0);
       const totalQty = Number($('totalQty').value || 0);
-      const supplier = $('supplier').value.trim();
-      const weights = $('boxWeights').value.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n) && n>0);
+      const weights = parseWeights();
 
-      if (!receivedDate || totalQty <= 0 || weights.length === 0) {
-        msg.textContent = 'Enter date, total qty, and box weights list.';
-        return;
-      }
+      if (totalQty <= 0 || weights.length === 0) return { ok:false, msg:'Enter total qty and box weights.' };
+
       const sumWeights = weights.reduce((a,b)=>a+b,0);
       if (Math.abs(sumWeights - totalQty) > 0.0001) {
-        msg.textContent = `Sum of box weights (${sumWeights}) must equal total quantity (${totalQty}).`;
-        return;
+        return { ok:false, msg:`Sum of box weights (${sumWeights}) must equal total quantity (${totalQty}).` };
       }
 
-      // Create batch
+      const transportPerKg = transportTotal && totalQty ? (transportTotal / totalQty) : 0;
+      const unitCost = basicRate + transportPerKg;
+      const serialBase = `${itemCode}-${date.replaceAll('-','')}`;
+
+      const rows = weights.map((w,i) => ({
+        item_id: itemId,
+        item_code: itemCode,
+        item_name: itemName,
+        movement_type: 'IN',
+        movement_date: new Date(date).toISOString(),
+        quantity: w,
+        unit_basic_rate: basicRate || 0,
+        unit_transport_rate: transportPerKg || 0,
+        unit_cost: unitCost,
+        total_value: unitCost * w,
+        serial_no: `${serialBase}-${pad(i+1)}`,
+        box_no: i+1
+      }));
+
+      return { ok:true, rows, totals: { qty: sumWeights, value: rows.reduce((a,r)=>a+(r.total_value||0),0) } };
+    }
+
+    function renderPreview(preview){
+      const tbody = $('movBody');
+      if (!preview.ok) {
+        tbody.innerHTML = `<tr><td colspan="7" class="warn">${preview.msg}</td></tr>`;
+        $('tQty').textContent = '0';
+        $('tVal').textContent = '0.00';
+        $('note').textContent = '';
+        currentPreview = [];
+        return;
+      }
+      const rows = preview.rows;
+      currentPreview = rows;
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${r.serial_no}</td>
+          <td>${r.item_code} — ${r.item_name}</td>
+          <td class="right">${r.quantity}</td>
+          <td class="right">${r.unit_basic_rate.toFixed(2)}</td>
+          <td class="right">${r.unit_transport_rate.toFixed(2)}</td>
+          <td class="right">${r.unit_cost.toFixed(2)}</td>
+          <td class="right">${r.total_value.toFixed(2)}</td>
+        </tr>
+      `).join('');
+      $('tQty').textContent = preview.totals.qty;
+      $('tVal').textContent = preview.totals.value.toFixed(2);
+      $('note').textContent = 'Transport cost allocated uniformly per kg across all boxes.';
+    }
+
+    async function saveBatchAndLines() {
+      const msg = $('msg'); msg.textContent = 'Saving…';
+
+      const preview = buildPreview();
+      if (!preview.ok) { renderPreview(preview); msg.textContent = preview.msg; return; }
+
+      const itemId = $('itemSelect').value;
+      const supplier = $('supplier').value.trim() || null;
+      const date = $('receivedDate').value;
+      const basicRate = Number($('basicRate').value || 0);
+      const transportTotal = Number($('transportTotal').value || 0);
+      const totalQty = Number($('totalQty').value || 0);
+
+      // 1) Create batch
       const { data: batchRows, error: batchErr } = await client.from('batches').insert([{
         item_id: itemId,
-        item_received_date: receivedDate,
-        supplier_details: supplier || null,
+        item_received_date: date,
+        supplier_details: supplier,
         basic_rate: basicRate || null,
         transport_cost_total: transportTotal || null,
         total_quantity: totalQty
@@ -105,28 +202,19 @@
       if (batchErr) { msg.textContent = 'Batch error: ' + batchErr.message; return; }
       const batchId = batchRows[0].id;
 
-      // Cost allocation
-      const transportPerKg = transportTotal && totalQty ? (transportTotal / totalQty) : 0;
-      const unitCost = (kg) => (basicRate || 0) + transportPerKg;
-
-      // Serial base: ITEMCODE-YYYYMMDD
-      const opt = $('itemSelect').selectedOptions[0];
-      const itemCode = opt.dataset.code;
-      const serialBase = `${itemCode}-${receivedDate.replaceAll('-','')}`;
-
-      // Create IN lines in movements
-      const rows = weights.map((w,i) => ({
+      // 2) Create IN lines in movements
+      const rows = currentPreview.map(r => ({
         item_id: itemId,
         batch_id: batchId,
         movement_type: 'IN',
-        movement_date: new Date(receivedDate).toISOString(),
-        quantity: w,
-        unit_basic_rate: basicRate || null,
-        unit_transport_rate: transportPerKg || null,
-        unit_cost: unitCost(w),
-        total_value: unitCost(w) * w,
-        serial_no: `${serialBase}-${pad(i+1)}`,
-        box_no: i+1,
+        movement_date: r.movement_date,
+        quantity: r.quantity,
+        unit_basic_rate: r.unit_basic_rate,
+        unit_transport_rate: r.unit_transport_rate,
+        unit_cost: r.unit_cost,
+        total_value: r.total_value,
+        serial_no: r.serial_no,
+        box_no: r.box_no,
         comments: 'Box received'
       }));
 
@@ -134,25 +222,10 @@
       if (movErr) { msg.textContent = 'Movements error: ' + movErr.message; return; }
 
       msg.textContent = `Saved. Created ${rows.length} IN lines.`;
-      renderRecent(rows, opt.dataset.name);
-      // Clear form
-      // $('boxWeights').value = ''; // keep for reference
     }
 
-    function renderRecent(rows, itemName){
-      const tbody = $('movBody');
-      tbody.innerHTML = rows.map(r => `
-        <tr>
-          <td>${r.serial_no}</td>
-          <td>${itemName}</td>
-          <td>${r.quantity}</td>
-          <td>${(r.unit_cost ?? 0).toFixed(2)}</td>
-          <td>${(r.total_value ?? 0).toFixed(2)}</td>
-        </tr>
-      `).join('');
-    }
-
-    $('saveBatchBtn').addEventListener('click', saveBatch);
+    $('previewBtn').addEventListener('click', () => renderPreview(buildPreview()));
+    $('saveBatchBtn').addEventListener('click', saveBatchAndLines);
     loadItems();
   </script>
 </body>
