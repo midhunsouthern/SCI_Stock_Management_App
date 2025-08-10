@@ -2,244 +2,695 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>SCI — Item Master</title>
+  <title>SCI — Stock Management</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root{
-      --text:#222; --muted:#666; --border:#e5e5e5; --bg:#fff; --bg-alt:#fafafa;
+      /* Neutral palette; we can swap to SouthernCoil branding later */
+      --bg:#fff; --text:#222; --muted:#666; --border:#e5e5e5; --alt:#fafafa;
       --brand:#111; --brand-contrast:#fff;
+      --danger:#9f1c28; --danger-bg:#fde7ea; --warn:#9a5a00; --warn-bg:#fff1e5; --ok:#146c2e; --ok-bg:#e8f7ee;
     }
+    * { box-sizing: border-box; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color:var(--text);
-           padding: 24px; max-width: 1100px; margin: auto; background:var(--bg); }
-    h1 { margin: 0 0 12px; }
-    .card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin: 12px 0; background:#fff; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; vertical-align: top; }
-    th { background: var(--bg-alt); position: sticky; top: 0; }
-    input, select, button, textarea { padding: 8px; border: 1px solid #ccc; border-radius: 8px; font: inherit; }
-    button { cursor: pointer; }
+           margin:0; background:var(--bg); }
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    h1,h2,h3 { margin: 0 0 12px; }
+    p { margin: 0 0 12px; }
+    .muted { color: var(--muted); }
+    .card { border:1px solid var(--border); border-radius:12px; padding:16px; background:#fff; margin:12px 0; }
     .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; }
-    .grow { flex: 1 1 240px; }
-    .muted { color:var(--muted); font-size: 14px; }
-    .hidden { display:none; }
+    .grow { flex:1 1 240px; }
+    input,select,textarea,button { padding:8px; border:1px solid #ccc; border-radius:8px; font: inherit; }
+    button { cursor:pointer; }
+    table { width:100%; border-collapse:collapse; }
+    th,td { padding:8px; border-bottom:1px solid #eee; text-align:left; vertical-align:top; }
+    th { background:var(--alt); }
+    .right { text-align:right; }
+    .hidden { display:none !important; }
+    .pill { display:inline-block; padding:4px 8px; border-radius:10px; font-size:12px; }
+    .ok { background:var(--ok-bg); color:var(--ok); }
+    .warn { background:var(--warn-bg); color:var(--warn); }
+    .danger { background:var(--danger-bg); color:var(--danger); }
 
-    /* Nav */
-    nav { display:flex; gap:12px; align-items:center; margin-bottom:16px; }
-    .tab { padding:8px 12px; border:1px solid var(--border); border-radius:10px;
-           text-decoration:none; color:var(--text); }
+    /* Top nav (tabs) */
+    .topnav { position:sticky; top:0; z-index:10; background:var(--bg); border-bottom:1px solid var(--border); }
+    .tabs { display:flex; gap:8px; align-items:center; padding:12px 24px; max-width:1200px; margin:0 auto; }
+    .tab { padding:8px 12px; border:1px solid var(--border); border-radius:10px; text-decoration:none; color:var(--text); }
     .tab:hover { background:#f7f7f7; }
     .tab.active { background:var(--brand); color:var(--brand-contrast); border-color:var(--brand); }
     .spacer { flex:1; }
+    .brand { font-weight:700; }
+
+    /* Helpers */
+    .danger-text { color:var(--danger); }
+    .warn-text { color:var(--warn); }
+    .ok-text { color:var(--ok); }
+    .dashed { border:1px dashed #ccc; padding:24px; border-radius:8px; background:#fafafa; text-align:center; }
+
+    /* Material Inward live total bar */
+    .totalbar { padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:#fff; }
+    .totalbar.bad { background:var(--danger-bg); border-color:var(--danger); }
+    .serialbox { display:grid; grid-template-columns: 120px 1fr 120px; gap:8px; align-items:center; }
+    .serial { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight:600; }
+    .scroll { max-height:60vh; overflow:auto; }
   </style>
 </head>
 <body>
-  <!-- NAV -->
-  <nav>
-    <a class="tab active" href="/index.html">Item Master</a>
-    <a class="tab" href="/batches.html">Material Inward</a>
-    <a class="tab" href="/consumption.html">Consumption</a>
-    <a class="tab" href="/suppliers.html">Suppliers</a>
-    <span class="spacer"></span>
-    <a class="tab" href="/dashboard.html">Dashboard</a>
-  </nav>
-
-  <h1>SCI — Item Master</h1>
-  <p class="muted">View, add, and edit items. (Dev mode: no login)</p>
-
-  <div class="card">
-    <h3>Add / Edit Item</h3>
-    <div class="row">
-      <input id="item_id" class="grow" placeholder="Item ID / Code (unique)" />
-      <input id="item_name" class="grow" placeholder="Item Name" />
-      <input id="category" class="grow" placeholder="Category" />
-      <input id="uom" style="width:120px" value="kg" placeholder="UOM" />
-      <input id="min_stock" style="width:140px" type="number" step="0.01" placeholder="Min Stock" />
-      <select id="is_active" style="width:140px">
-        <option value="true" selected>Active</option>
-        <option value="false">Inactive</option>
-      </select>
-    </div>
-    <div class="row" style="margin-top:8px;">
-      <textarea id="description" class="grow" rows="3" placeholder="Description"></textarea>
-    </div>
-    <div class="row" style="margin-top:8px;">
-      <button id="addBtn">Add Item</button>
-      <button id="saveBtn" class="hidden">Save Changes</button>
-      <button id="cancelBtn" class="hidden">Cancel</button>
-      <span id="msg" class="muted"></span>
+  <!-- Top Navigation -->
+  <div class="topnav">
+    <div class="tabs">
+      <span class="brand">SCI Stock</span>
+      <a class="tab active" data-route="dashboard" href="#dashboard">Dashboard</a>
+      <a class="tab" data-route="items" href="#items">Item Master</a>
+      <a class="tab" data-route="inward" href="#inward">Material Inward</a>
+      <a class="tab" data-route="consumption" href="#consumption">Consumption</a>
+      <a class="tab" data-route="suppliers" href="#suppliers">Suppliers</a>
+      <span class="spacer"></span>
+      <!-- (Optional future) Login/Profile -->
     </div>
   </div>
 
-  <div class="card">
-    <h3>Items</h3>
-    <div class="row" style="margin-bottom:8px;">
-      <input id="search" class="grow" placeholder="Search by name/category/id…" />
-      <button id="refreshBtn">Refresh</button>
-      <button id="exportBtn">Export CSV</button>
-      <span id="count" class="muted"></span>
-    </div>
-    <div style="max-height:60vh; overflow:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>Item ID</th><th>Name</th><th>Category</th><th>UOM</th>
-            <th>Min</th><th>Active</th><th>Description</th><th>Created</th><th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="items-body">
-          <tr><td colspan="9">Loading…</td></tr>
-        </tbody>
-      </table>
-    </div>
+  <div class="container">
+    <!-- DASHBOARD -->
+    <section data-page="dashboard">
+      <h1>Dashboard</h1>
+      <p class="muted">Key stock and movement summaries (placeholder for now).</p>
+      <div class="dashed"><span class="muted">Widgets coming soon.</span></div>
+    </section>
+
+    <!-- ITEM MASTER -->
+    <section class="hidden" data-page="items">
+      <h1>Item Master</h1>
+      <p class="muted">View, add, and edit items. (Dev: open access)</p>
+
+      <div class="card">
+        <h3>Add / Edit Item</h3>
+        <div class="row">
+          <input id="itm_item_id" class="grow" placeholder="Item ID / Code (unique)" />
+          <input id="itm_item_name" class="grow" placeholder="Item Name" />
+          <input id="itm_category" class="grow" placeholder="Category" />
+          <input id="itm_uom" style="width:120px" value="kg" placeholder="UOM" />
+          <input id="itm_min_stock" style="width:160px" type="number" step="0.01" placeholder="Min Stock" />
+          <select id="itm_is_active" style="width:150px">
+            <option value="true" selected>Active</option>
+            <option value="false">Inactive</option>
+          </select>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <textarea id="itm_description" class="grow" rows="3" placeholder="Description"></textarea>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <button id="itm_addBtn">Add Item</button>
+          <button id="itm_saveBtn" class="hidden">Save Changes</button>
+          <button id="itm_cancelBtn" class="hidden">Cancel</button>
+          <span id="itm_msg" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Items</h3>
+        <div class="row" style="margin-bottom:8px;">
+          <input id="itm_search" class="grow" placeholder="Search by name/category/id…" />
+          <button id="itm_refreshBtn">Refresh</button>
+          <button id="itm_exportBtn">Export CSV</button>
+          <span id="itm_count" class="muted"></span>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Item ID</th><th>Name</th><th>Category</th><th>UOM</th>
+                <th>Min</th><th>Active</th><th>Description</th><th>Created</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="itm_body"><tr><td colspan="9">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- MATERIAL INWARD -->
+    <section class="hidden" data-page="inward">
+      <h1>Material Inward</h1>
+      <p class="muted">Create a batch, pick supplier, enter package count & weights, auto-generate box serials, and post IN lines.</p>
+
+      <div class="card">
+        <h3>Batch Details</h3>
+        <div class="row">
+          <select id="inw_item" class="grow"></select>
+          <select id="inw_supplier" class="grow"></select>
+          <input id="inw_date" type="date" class="grow" />
+          <input id="inw_basic" type="number" step="0.01" placeholder="Basic rate / UOM (₹)" class="grow" />
+          <input id="inw_transp" type="number" step="0.01" placeholder="Total transport (₹)" class="grow" />
+          <input id="inw_total" type="number" step="0.001" placeholder="Total quantity (e.g., 500)" class="grow" />
+          <input id="inw_boxes" type="number" step="1" placeholder="# Packages / Boxes" style="width:180px" />
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <span id="inw_msg" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Packages</h3>
+        <p class="muted">Enter each box weight, press <b>TAB</b> to jump quickly. Save is blocked until sum of weights equals total quantity.</p>
+        <div id="inw_totalbar" class="totalbar">Total: <b id="inw_sum">0</b> / <b id="inw_target">0</b></div>
+        <div id="inw_boxes_wrap" class="scroll" style="margin-top:8px;"></div>
+        <div class="row" style="margin-top:8px;">
+          <button id="inw_preview">Preview Costs</button>
+          <button id="inw_save">Save Batch & Create IN Lines</button>
+          <span id="inw_done" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Preview</h3>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr><th>Serial</th><th>Item</th><th class="right">Qty</th><th class="right">Unit Basic</th><th class="right">Unit Transp</th><th class="right">Unit Cost</th><th class="right">Total</th></tr>
+            </thead>
+            <tbody id="inw_prev_body"><tr><td colspan="7" class="muted">No preview yet.</td></tr></tbody>
+            <tfoot>
+              <tr><th colspan="2" class="right">Totals</th><th id="inw_prev_qty" class="right">0</th><th></th><th></th><th></th><th id="inw_prev_val" class="right">0.00</th></tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONSUMPTION -->
+    <section class="hidden" data-page="consumption">
+      <h1>Consumption (OUT)</h1>
+      <p class="muted">Only non-zero balance boxes are shown. Pick category → item, enter quantities, and post OUT movements.</p>
+
+      <div class="card">
+        <div class="row">
+          <select id="con_category" class="grow"></select>
+          <select id="con_item" class="grow"></select>
+          <input id="con_date" type="date" class="grow" />
+          <input id="con_use" class="grow" placeholder="Use / Job / Department" />
+          <input id="con_comments" class="grow" placeholder="Comments (optional)" />
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <button id="con_load">Load Boxes</button>
+          <button id="con_post">Post Consumption</button>
+          <span id="con_msg" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Available Boxes</h3>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Serial</th><th>Batch</th><th class="right">Qty In</th><th class="right">Qty Out</th><th class="right">Remaining</th><th class="right">Consume Now</th></tr></thead>
+            <tbody id="con_body"><tr><td colspan="6" class="muted">Select item and click Load Boxes.</td></tr></tbody>
+            <tfoot><tr><th colspan="4" class="right">Total to consume</th><th class="right" id="con_total">0</th><th></th></tr></tfoot>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SUPPLIERS -->
+    <section class="hidden" data-page="suppliers">
+      <h1>Suppliers</h1>
+      <p class="muted">Add suppliers and map preferred suppliers per item.</p>
+
+      <div class="card">
+        <h3>Add Supplier</h3>
+        <div class="row">
+          <input id="sup_name" class="grow" placeholder="Supplier name" />
+          <input id="sup_emails" class="grow" placeholder="Emails (comma-separated)" />
+          <input id="sup_phone" class="grow" placeholder="Phone" />
+          <input id="sup_gstin" class="grow" placeholder="GSTIN" />
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <textarea id="sup_address" class="grow" rows="2" placeholder="Address"></textarea>
+          <input id="sup_terms" class="grow" placeholder="Payment terms" />
+          <input id="sup_lead" class="grow" type="number" step="1" placeholder="Lead time (days)" />
+          <select id="sup_active" style="width:150px">
+            <option value="true" selected>Active</option>
+            <option value="false">Inactive</option>
+          </select>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <button id="sup_add">Add Supplier</button>
+          <span id="sup_msg" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Map Item ↔ Supplier</h3>
+        <div class="row">
+          <select id="map_item" class="grow"></select>
+          <select id="map_supplier" class="grow"></select>
+          <input id="map_rate" class="grow" type="number" step="0.01" placeholder="Last rate (₹/UOM)" />
+          <input id="map_lead" class="grow" type="number" step="1" placeholder="Avg lead time (days)" />
+          <label><input id="map_pref" type="checkbox" /> Preferred</label>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <button id="map_link">Link Item & Supplier</button>
+          <span id="map_msg" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Suppliers</h3>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Name</th><th>Emails</th><th>Phone</th><th>GSTIN</th><th>Active</th><th>Lead (d)</th></tr></thead>
+            <tbody id="sup_body"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Item ↔ Supplier Map</h3>
+        <div class="row" style="margin-bottom:8px;">
+          <select id="map_filter_item" class="grow"></select>
+          <button id="map_refresh">Refresh</button>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Item</th><th>Supplier</th><th class="right">Last rate</th><th class="right">Avg lead (d)</th><th>Preferred</th></tr></thead>
+            <tbody id="map_body"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <!-- Supabase client -->
+  <!-- Supabase -->
   <script src="https://unpkg.com/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
   <script>
+    // ====== CONFIG ======
     const SUPABASE_URL = "https://yifgximvlqblnvxsmizx.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpZmd4aW12bHFibG52eHNtaXp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4MDIwNjMsImV4cCI6MjA3MDM3ODA2M30.Q6Bb7GCsZLSz-pjzHi0T-FTRx1uWkb1zu68AGnCiUhw";
     const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const $ = id => document.getElementById(id);
-    let editingId = null;
+    const qs = sel => document.querySelector(sel);
+    const qsa = sel => [...document.querySelectorAll(sel)];
+    function pad(n,w=3){ return String(n).padStart(w,'0'); }
+    function fmt(n,d=2){ if(n==null||isNaN(n)) return '0'; return Number(n).toFixed(d); }
+    function toISODate(d){ return new Date(d).toISOString(); }
 
-    function collectPayload() {
-      return {
-        item_id: $('item_id').value.trim(),
-        item_name: $('item_name').value.trim(),
-        category: $('category').value.trim() || null,
-        description: $('description').value.trim() || null,
-        uom: $('uom').value.trim() || 'kg',
-        min_stock: Number($('min_stock').value || 0),
-        is_active: $('is_active').value === 'true'
-      };
+    // ====== ROUTER (tabs) ======
+    function showPage(name){
+      qsa('[data-page]').forEach(sec => sec.classList.toggle('hidden', sec.dataset.page !== name));
+      qsa('.tab').forEach(t => t.classList.toggle('active', t.dataset.route === name));
+      location.hash = name;
     }
+    window.addEventListener('hashchange', () => {
+      const name = (location.hash || '#dashboard').replace('#','');
+      if (['dashboard','items','inward','consumption','suppliers'].includes(name)) showPage(name);
+    });
 
-    function setFormForAdd() {
-      editingId = null;
-      $('addBtn').classList.remove('hidden');
-      $('saveBtn').classList.add('hidden');
-      $('cancelBtn').classList.add('hidden');
-      $('msg').textContent = '';
-      ['item_id','item_name','category','description','min_stock'].forEach(id => $(id).value='');
-      $('uom').value = $('uom').value || 'kg';
-      $('is_active').value = 'true';
-    }
-
-    function setFormForEdit(row) {
-      editingId = row.dataset.id;
-      const cells = row.children;
-      $('item_id').value = cells[0].textContent.trim();
-      $('item_name').value = cells[1].textContent.trim();
-      $('category').value = cells[2].textContent.trim();
-      $('uom').value = cells[3].textContent.trim();
-      $('min_stock').value = cells[4].textContent.trim();
-      $('is_active').value = (cells[5].textContent.trim() === 'Yes') ? 'true' : 'false';
-      $('description').value = cells[6].innerText || '';
-
-      $('addBtn').classList.add('hidden');
-      $('saveBtn').classList.remove('hidden');
-      $('cancelBtn').classList.remove('hidden');
-      $('msg').textContent = `Editing ${$('item_id').value}`;
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    async function loadItems() {
-      const tbody = $('items-body');
-      const search = $('search').value.trim();
-      tbody.innerHTML = '<tr><td colspan="9">Loading…</td></tr>';
-
-      let query = client.from('items').select('*').order('created_at', { ascending:false });
-      if (search) {
+    // ====== ITEM MASTER ======
+    let itm_editingId = null;
+    async function itm_load(){
+      const tbody = $('itm_body'); tbody.innerHTML = '<tr><td colspan="9">Loading…</td></tr>';
+      const s = $('itm_search').value.trim();
+      let query = client.from('items').select('*').order('created_at',{ascending:false});
+      if (s){
         query = client.from('items').select('*')
-          .or(`item_id.ilike.%${search}%,item_name.ilike.%${search}%,category.ilike.%${search}%`)
-          .order('created_at', { ascending:false });
+          .or(`item_id.ilike.%${s}%,item_name.ilike.%${s}%,category.ilike.%${s}%`)
+          .order('created_at',{ascending:false});
       }
       const { data, error } = await query;
-      if (error) { tbody.innerHTML = `<tr><td colspan="9">Error: ${error.message}</td></tr>`; return; }
-      $('count').textContent = `${data?.length||0} item(s)`;
-
-      if (!data?.length) { tbody.innerHTML = `<tr><td colspan="9">No items yet.</td></tr>`; return; }
-
-      tbody.innerHTML = data.map(r => `
+      if (error){ tbody.innerHTML = `<tr><td colspan="9">Error: ${error.message}</td></tr>`; return; }
+      $('itm_count').textContent = `${data?.length||0} item(s)`;
+      if (!data?.length){ tbody.innerHTML = `<tr><td colspan="9">No items yet.</td></tr>`; return; }
+      tbody.innerHTML = data.map(r=>`
         <tr data-id="${r.id}">
           <td>${r.item_id}</td>
           <td>${r.item_name}</td>
-          <td>${r.category ?? ''}</td>
-          <td>${r.uom ?? ''}</td>
-          <td>${r.min_stock ?? ''}</td>
-          <td>${r.is_active ? 'Yes' : 'No'}</td>
+          <td>${r.category??''}</td>
+          <td>${r.uom??''}</td>
+          <td>${r.min_stock??''}</td>
+          <td>${r.is_active?'Yes':'No'}</td>
           <td>${(r.description||'').replace(/\n/g,'<br>')}</td>
           <td>${new Date(r.created_at).toLocaleString()}</td>
-          <td><button class="editBtn">Edit</button></td>
+          <td><button class="itm_edit">Edit</button></td>
         </tr>
       `).join('');
     }
-
-    async function addItem() {
-      const msg = $('msg'); msg.textContent = 'Saving…';
-      const payload = collectPayload();
-      if (!payload.item_id || !payload.item_name) { msg.textContent = 'Item ID and Name are required.'; return; }
-      const { error } = await client.from('items').insert([payload]);
-      if (error) { msg.textContent = 'Error: ' + error.message; return; }
-      msg.textContent = 'Added!';
-      setFormForAdd();
-      await loadItems();
+    function itm_collect(){
+      return {
+        item_id: $('itm_item_id').value.trim(),
+        item_name: $('itm_item_name').value.trim(),
+        category: $('itm_category').value.trim() || null,
+        description: $('itm_description').value.trim() || null,
+        uom: $('itm_uom').value.trim() || 'kg',
+        min_stock: Number($('itm_min_stock').value || 0),
+        is_active: $('itm_is_active').value === 'true'
+      };
+    }
+    function itm_setAdd(){
+      itm_editingId = null;
+      $('itm_addBtn').classList.remove('hidden');
+      $('itm_saveBtn').classList.add('hidden');
+      $('itm_cancelBtn').classList.add('hidden');
+      $('itm_msg').textContent = '';
+      ['itm_item_id','itm_item_name','itm_category','itm_description','itm_min_stock'].forEach(id => $(id).value='');
+      $('itm_uom').value = 'kg';
+      $('itm_is_active').value = 'true';
+    }
+    function itm_setEdit(tr){
+      itm_editingId = tr.dataset.id;
+      const c = tr.children;
+      $('itm_item_id').value = c[0].textContent.trim();
+      $('itm_item_name').value = c[1].textContent.trim();
+      $('itm_category').value = c[2].textContent.trim();
+      $('itm_uom').value = c[3].textContent.trim();
+      $('itm_min_stock').value = c[4].textContent.trim();
+      $('itm_is_active').value = (c[5].textContent.trim()==='Yes')?'true':'false';
+      $('itm_description').value = c[6].innerText || '';
+      $('itm_addBtn').classList.add('hidden');
+      $('itm_saveBtn').classList.remove('hidden');
+      $('itm_cancelBtn').classList.remove('hidden');
+      $('itm_msg').textContent = `Editing ${$('itm_item_id').value}`;
+      window.scrollTo({ top:0, behavior:'smooth' });
+    }
+    async function itm_add(){
+      const msg=$('itm_msg'); msg.textContent='Saving…';
+      const p = itm_collect(); if(!p.item_id||!p.item_name){ msg.textContent='Item ID and Name are required.'; return; }
+      const { error } = await client.from('items').insert([p]);
+      if (error){ msg.textContent='Error: '+error.message; return; }
+      msg.textContent='Added.'; itm_setAdd(); await itm_load();
+    }
+    async function itm_save(){
+      const msg=$('itm_msg');
+      if(!itm_editingId){ msg.textContent='Nothing to save.'; return; }
+      msg.textContent='Saving changes…';
+      const p = itm_collect(); if(!p.item_id||!p.item_name){ msg.textContent='Item ID and Name are required.'; return; }
+      const { error } = await client.from('items').update(p).eq('id', itm_editingId);
+      if (error){ msg.textContent='Error: '+error.message; return; }
+      msg.textContent='Updated.'; itm_setAdd(); await itm_load();
+    }
+    async function itm_export(){
+      const { data, error } = await client.from('items').select('*').order('created_at',{ascending:false});
+      if (error){ alert('Export error: '+error.message); return; }
+      const header=['item_id','item_name','category','uom','min_stock','is_active','description','created_at'];
+      const lines=[header.join(',')].concat((data||[]).map(r=>header.map(k=>{
+        let v=r[k]; if(v==null) return ''; if(typeof v==='string') v='"'+v.replace(/"/g,'""')+'"'; return v;
+      }).join(',')));
+      const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+      const url=URL.createObjectURL(blob); const a=document.createElement('a');
+      a.href=url; a.download='items_export.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     }
 
-    async function saveEdit() {
-      const msg = $('msg');
-      if (!editingId) { msg.textContent = 'Nothing to save.'; return; }
-      msg.textContent = 'Saving changes…';
-      const payload = collectPayload();
-      if (!payload.item_id || !payload.item_name) { msg.textContent = 'Item ID and Name are required.'; return; }
-      const { error } = await client.from('items').update(payload).eq('id', editingId);
-      if (error) { msg.textContent = 'Error: ' + error.message; return; }
-      msg.textContent = 'Updated.';
-      setFormForAdd();
-      await loadItems();
+    // ====== SUPPLIERS (shared loaders) ======
+    async function sup_list(){
+      const tbody=$('sup_body');
+      const { data, error } = await client.from('suppliers').select('id,name,emails,phone,gstin,is_active,lead_time_days').order('name');
+      if(error){ tbody.innerHTML=`<tr><td colspan="6">Error: ${error.message}</td></tr>`; return; }
+      if(!data?.length){ tbody.innerHTML=`<tr><td colspan="6" class="muted">No suppliers yet.</td></tr>`; return; }
+      tbody.innerHTML = data.map(r=>`
+        <tr><td>${r.name}</td><td>${r.emails||''}</td><td>${r.phone||''}</td><td>${r.gstin||''}</td><td>${r.is_active?'Yes':'No'}</td><td class="right">${r.lead_time_days??''}</td></tr>
+      `).join('');
+    }
+    async function sup_add(){
+      const msg=$('sup_msg'); msg.textContent='Saving…';
+      const p={
+        name:$('sup_name').value.trim(),
+        emails:$('sup_emails').value.trim()||null,
+        phone:$('sup_phone').value.trim()||null,
+        gstin:$('sup_gstin').value.trim()||null,
+        address:$('sup_address').value.trim()||null,
+        payment_terms:$('sup_terms').value.trim()||null,
+        lead_time_days:Number($('sup_lead').value||0),
+        is_active:$('sup_active').value==='true'
+      };
+      if(!p.name){ msg.textContent='Name is required.'; return; }
+      const { error } = await client.from('suppliers').insert([p]);
+      if(error){ msg.textContent='Error: '+error.message; return; }
+      msg.textContent='Added supplier.'; ['sup_name','sup_emails','sup_phone','sup_gstin','sup_address','sup_terms','sup_lead'].forEach(id=>$(id).value='');
+      await sup_list(); await loadSuppliersInto('map_supplier'); await loadSuppliersInto('inw_supplier','Select supplier…');
+    }
+    async function loadItemsInto(selectId, placeholder='Select item…'){
+      const sel=$(selectId); sel.innerHTML='<option>Loading items…</option>';
+      const { data, error } = await client.from('items').select('id,item_id,item_name,uom,category').order('item_id');
+      if(error){ sel.innerHTML='<option>Error</option>'; return; }
+      sel.innerHTML = `<option value="">${placeholder}</option>` + (data||[]).map(r=>`<option value="${r.id}" data-code="${r.item_id}" data-name="${r.item_name}" data-uom="${r.uom||''}" data-cat="${r.category||''}">${r.item_id} — ${r.item_name}</option>`).join('');
+      return data||[];
+    }
+    async function loadSuppliersInto(selectId, placeholder='Select supplier…'){
+      const sel=$(selectId); sel.innerHTML='<option>Loading suppliers…</option>';
+      const { data, error } = await client.from('suppliers').select('id,name').order('name');
+      if(error){ sel.innerHTML='<option>Error</option>'; return; }
+      sel.innerHTML = `<option value="">${placeholder}</option>` + (data||[]).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+      return data||[];
+    }
+    async function map_list(){
+      const tbody=$('map_body');
+      const filter=$('map_filter_item').value;
+      const [{ data: maps }, { data: items }, { data: sups }] = await Promise.all([
+        client.from('item_suppliers').select('*'),
+        client.from('items').select('id,item_id,item_name'),
+        client.from('suppliers').select('id,name')
+      ]);
+      const itemById=new Map((items||[]).map(i=>[i.id,i]));
+      const supById=new Map((sups||[]).map(s=>[s.id,s]));
+      const filtered = (filter ? (maps||[]).filter(m=>m.item_id===filter) : (maps||[]));
+      if(!filtered.length){ tbody.innerHTML=`<tr><td colspan="5" class="muted">No mappings.</td></tr>`; return; }
+      tbody.innerHTML = filtered.map(m=>{
+        const it=itemById.get(m.item_id)||{}; const sp=supById.get(m.supplier_id)||{};
+        return `<tr><td>${it.item_id||''} — ${it.item_name||''}</td><td>${sp.name||''}</td><td class="right">${m.last_rate??''}</td><td class="right">${m.avg_lead_time_days??''}</td><td>${m.preferred?'Yes':'No'}</td></tr>`;
+      }).join('');
+    }
+    async function map_add(){
+      const msg=$('map_msg'); msg.textContent='Linking…';
+      const item_id=$('map_item').value; const supplier_id=$('map_supplier').value;
+      const last_rate=Number($('map_rate').value||0); const avg_lead_time_days=Number($('map_lead').value||0); const preferred=$('map_pref').checked;
+      if(!item_id||!supplier_id){ msg.textContent='Choose item and supplier.'; return; }
+      const { error } = await client.from('item_suppliers').insert([{ item_id, supplier_id, last_rate, avg_lead_time_days, preferred }]);
+      if(error){ msg.textContent='Error: '+error.message; return; }
+      msg.textContent='Linked.'; $('map_rate').value=''; $('map_lead').value=''; $('map_pref').checked=false; await map_list();
     }
 
-    function exportCSV(rows) {
-      const header = ['item_id','item_name','category','uom','min_stock','is_active','description','created_at'];
-      const lines = [header.join(',')].concat(rows.map(r => {
-        const vals = header.map(k => {
-          let v = r[k];
-          if (v === null || v === undefined) return '';
-          if (typeof v === 'string') v = '"' + v.replace(/"/g, '""') + '"';
-          return v;
-        });
-        return vals.join(',');
+    // ====== MATERIAL INWARD ======
+    let inw_prev_rows = [];
+    function inw_buildBoxInputs(){
+      const wrap=$('inw_boxes_wrap'); wrap.innerHTML='';
+      const n=parseInt($('inw_boxes').value||0,10); if(!n||n<1){ wrap.innerHTML='<p class="muted">Enter number of packages to create inputs.</p>'; return; }
+      const itemCode = $('inw_item').selectedOptions[0]?.dataset.code || 'ITEM';
+      const date=$('inw_date').value || new Date().toISOString().slice(0,10);
+      const serialBase = `${itemCode}-${date.replaceAll('-','')}`;
+      for(let i=1;i<=n;i++){
+        const row=document.createElement('div'); row.className='serialbox';
+        row.innerHTML = `
+          <div class="serial">${serialBase}-${pad(i)}</div>
+          <input class="boxWeight" type="number" step="0.001" placeholder="Weight for box ${i}" />
+          <div class="muted right">#${i}</div>
+        `;
+        wrap.appendChild(row);
+      }
+      qsa('.boxWeight').forEach(inp=>{
+        inp.addEventListener('input', inw_updateSum);
+        inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); inw_updateSum(); } });
+      });
+      inw_updateSum();
+    }
+    function inw_updateSum(){
+      const sum = qsa('.boxWeight').reduce((a,i)=>a+(Number(i.value)||0),0);
+      const target = Number($('inw_total').value||0);
+      $('inw_sum').textContent = fmt(sum,3);
+      $('inw_target').textContent = fmt(target,3);
+      const bar=$('inw_totalbar'); const ok=Math.abs(sum-target)<0.0001;
+      bar.classList.toggle('bad', !ok);
+      $('inw_save').disabled = !ok;
+    }
+    function inw_buildPreview(){
+      const opt=$('inw_item').selectedOptions[0]; if(!opt||!opt.value) return { ok:false, msg:'Select an item.' };
+      const itemId=opt.value, itemCode=opt.dataset.code, itemName=opt.dataset.name;
+      const date=$('inw_date').value; if(!date) return { ok:false, msg:'Enter received date.' };
+      const basic=Number($('inw_basic').value||0), transpTot=Number($('inw_transp').value||0), total=Number($('inw_total').value||0);
+      const weights = qsa('.boxWeight').map(i=>Number(i.value||0)).filter(n=>n>0);
+      if(!total||!weights.length) return { ok:false, msg:'Enter total qty and weights.' };
+      const sum=weights.reduce((a,b)=>a+b,0); if(Math.abs(sum-total)>0.0001) return { ok:false, msg:`Weights sum (${sum}) must equal total (${total}).` };
+      const tPerKg = transpTot && total ? (transpTot/total) : 0;
+      const unitCost = basic + tPerKg;
+      const serialBase = `${itemCode}-${date.replaceAll('-','')}`;
+      const rows = weights.map((w,idx)=>({
+        quantity:w, unit_basic_rate:basic||0, unit_transport_rate:tPerKg||0,
+        unit_cost:unitCost, total_value:unitCost*w, serial_no:`${serialBase}-${pad(idx+1)}`, box_no:(idx+1),
+        item_id:itemId, movement_type:'IN', movement_date:new Date(date).toISOString()
       }));
-      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'items_export.csv';
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
+      const totals={ qty:sum, val: rows.reduce((a,r)=>a+(r.total_value||0),0) };
+      return { ok:true, rows, itemName, totals };
+    }
+    function inw_renderPreview(prev){
+      const tbody=$('inw_prev_body');
+      if(!prev.ok){ tbody.innerHTML=`<tr><td colspan="7" class="danger-text">${prev.msg}</td></tr>`; $('inw_prev_qty').textContent='0'; $('inw_prev_val').textContent='0.00'; inw_prev_rows=[]; return; }
+      inw_prev_rows=prev.rows;
+      tbody.innerHTML = prev.rows.map(r=>`
+        <tr>
+          <td>${r.serial_no}</td>
+          <td>${$('inw_item').selectedOptions[0].dataset.code} — ${prev.itemName}</td>
+          <td class="right">${fmt(r.quantity,3)}</td>
+          <td class="right">${fmt(r.unit_basic_rate,2)}</td>
+          <td class="right">${fmt(r.unit_transport_rate,2)}</td>
+          <td class="right">${fmt(r.unit_cost,2)}</td>
+          <td class="right">${fmt(r.total_value,2)}</td>
+        </tr>
+      `).join('');
+      $('inw_prev_qty').textContent = fmt(prev.totals.qty,3);
+      $('inw_prev_val').textContent = fmt(prev.totals.val,2);
+    }
+    async function inw_saveBatch(){
+      const msg=$('inw_done'); msg.textContent='Saving…';
+      const prev=inw_buildPreview(); if(!prev.ok){ inw_renderPreview(prev); msg.textContent=prev.msg; return; }
+      const item_id=$('inw_item').value; const supplier_id=$('inw_supplier').value || null;
+      const supplier_details = $('inw_supplier').selectedOptions[0]?.textContent || null;
+      const date=$('inw_date').value; const basic=Number($('inw_basic').value||0); const transpTot=Number($('inw_transp').value||0); const total=Number($('inw_total').value||0);
+      // Create batch
+      const { data: bRows, error: bErr } = await client.from('batches').insert([{
+        item_id, item_received_date:date, supplier_details,
+        basic_rate: basic||null, transport_cost_total: transpTot||null, total_quantity: total
+      }]).select('id');
+      if(bErr){ msg.textContent='Batch error: '+bErr.message; return; }
+      const batch_id=bRows[0].id;
+      // Create movements
+      const rows = inw_prev_rows.map(r=>({ ...r, batch_id, comments:'Box received' }));
+      const { error: mErr } = await client.from('movements').insert(rows);
+      if(mErr){ msg.textContent='Movements error: '+mErr.message; return; }
+      msg.textContent = `Saved. Created ${rows.length} IN lines.`;
     }
 
-    async function handleExport() {
-      const { data, error } = await client.from('items').select('*').order('created_at', { ascending:false });
-      if (error) { alert('Export error: ' + error.message); return; }
-      exportCSV(data || []);
+    // ====== CONSUMPTION ======
+    function con_groupOutBySerial(outRows){
+      const map=new Map(); for(const r of (outRows||[])){ const key=r.serial_no||''; map.set(key, (map.get(key)||0)+Number(r.quantity||0)); } return map;
+    }
+    async function con_loadCategories(){
+      const { data } = await client.from('items').select('category').not('category','is','null');
+      const cats = [...new Set((data||[]).map(r=>r.category).filter(Boolean))].sort();
+      $('con_category').innerHTML = '<option value="">All categories</option>'+cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+      await con_loadItems(); // initial
+    }
+    async function con_loadItems(){
+      const cat=$('con_category').value;
+      let q=client.from('items').select('id,item_id,item_name,category').order('item_id');
+      if(cat) q=q.eq('category',cat);
+      const { data } = await q;
+      $('con_item').innerHTML = '<option value="">Select item…</option>' + (data||[]).map(i=>`<option value="${i.id}" data-code="${i.item_id}">${i.item_id} — ${i.item_name}</option>`).join('');
+    }
+    async function con_loadBoxes(){
+      const msg=$('con_msg'); msg.textContent='';
+      const itemId=$('con_item').value; if(!itemId){ msg.textContent='Select an item.'; return; }
+      const [{ data: inRows, error: inErr }, { data: outRows, error: outErr }] = await Promise.all([
+        client.from('movements').select('id,batch_id,serial_no,quantity,movement_date').eq('item_id',itemId).eq('movement_type','IN').order('movement_date',{ascending:true}),
+        client.from('movements').select('serial_no,quantity').eq('item_id',itemId).eq('movement_type','OUT')
+      ]);
+      if(inErr){ msg.textContent='Error loading IN lines: '+inErr.message; return; }
+      if(outErr){ msg.textContent='Error loading OUT lines: '+outErr.message; return; }
+      const outMap=con_groupOutBySerial(outRows);
+      // Filter: show only non-zero balance rows
+      const filtered = (inRows||[]).map(r=>{
+        const inq=Number(r.quantity||0), outq=Number(outMap.get(r.serial_no||'')||0);
+        const rem=Math.max(0, inq - outq);
+        return { ...r, qty_in: inq, qty_out: outq, rem };
+      }).filter(r=>r.rem>0.0001);
+
+      await con_renderBoxes(filtered);
+    }
+    async function con_fetchBatchShort(batchId){
+      if(!batchId) return '';
+      const { data } = await client.from('batches').select('item_received_date').eq('id',batchId).single();
+      return (data?.item_received_date||'').replaceAll('-','');
+    }
+    async function con_renderBoxes(rows){
+      const tbody=$('con_body');
+      if(!rows.length){ tbody.innerHTML='<tr><td colspan="6" class="muted">No available boxes for this item.</td></tr>'; $('con_total').textContent='0'; return; }
+      const batchShortById={}; const uniq=[...new Set(rows.map(r=>r.batch_id).filter(Boolean))];
+      for(const b of uniq){ batchShortById[b]=await con_fetchBatchShort(b); }
+      tbody.innerHTML = rows.map(r=>`
+        <tr data-serial="${r.serial_no||''}">
+          <td>${r.serial_no||''}</td>
+          <td>${batchShortById[r.batch_id]||''}</td>
+          <td class="right">${fmt(r.qty_in,3)}</td>
+          <td class="right">${fmt(r.qty_out,3)}</td>
+          <td class="right">${fmt(r.rem,3)}</td>
+          <td class="right"><input data-rem="${r.rem}" type="number" step="0.001" min="0" max="${r.rem}" style="width:110px" class="con_cons"></td>
+        </tr>
+      `).join('');
+      qsa('.con_cons').forEach(i=>i.addEventListener('input', con_updateTotal));
+      con_updateTotal();
+    }
+    function con_updateTotal(){
+      let t=0; qsa('.con_cons').forEach(i=>{ const n=Number(i.value||0); const rem=Number(i.dataset.rem||0); if(n>rem)i.value=rem; if(n>0)t+=n; });
+      $('con_total').textContent = fmt(t,3);
+    }
+    async function con_post(){
+      const msg=$('con_msg'); msg.textContent='Posting…';
+      const itemId=$('con_item').value; if(!itemId){ msg.textContent='Select an item.'; return; }
+      const date=$('con_date').value; if(!date){ msg.textContent='Pick an OUT date.'; return; }
+      const use=$('con_use').value.trim()||null; const comments=$('con_comments').value.trim()||null;
+      const rows=[]; qsa('#con_body tr[data-serial]').forEach(tr=>{
+        const serial=tr.dataset.serial||''; const inp=tr.querySelector('input.con_cons'); const qty=Number(inp?.value||0); const rem=Number(inp?.dataset.rem||0);
+        if(qty>0){ if(qty>rem){ msg.textContent=`Qty exceeds remaining for ${serial}.`; return; } rows.push({ item_id:itemId, movement_type:'OUT', movement_date:toISODate(date), quantity:qty, serial_no:serial, "use":use, comments }); }
+      });
+      if(!rows.length){ msg.textContent='Enter consumption for at least one box.'; return; }
+      const { error } = await client.from('movements').insert(rows);
+      if(error){ msg.textContent='Error: '+error.message; return; }
+      msg.textContent=`Posted ${rows.length} OUT lines.`; await con_loadBoxes();
     }
 
-    // Events
-    $('addBtn').addEventListener('click', addItem);
-    $('saveBtn').addEventListener('click', saveEdit);
-    $('cancelBtn').addEventListener('click', setFormForAdd);
-    $('refreshBtn').addEventListener('click', loadItems);
-    $('exportBtn').addEventListener('click', handleExport);
-    $('search').addEventListener('input', () => { clearTimeout(window.__t); window.__t=setTimeout(loadItems, 300); });
+    // ====== INIT & EVENT WIRING ======
+    function bindItemMaster(){
+      $('itm_addBtn').addEventListener('click', itm_add);
+      $('itm_saveBtn').addEventListener('click', itm_save);
+      $('itm_cancelBtn').addEventListener('click', itm_setAdd);
+      $('itm_refreshBtn').addEventListener('click', itm_load);
+      $('itm_exportBtn').addEventListener('click', itm_export);
+      $('itm_search').addEventListener('input', ()=>{ clearTimeout(window.__t1); window.__t1=setTimeout(itm_load,300); });
+      $('itm_body').addEventListener('click', e=>{ if(e.target?.classList.contains('itm_edit')) itm_setEdit(e.target.closest('tr')); });
+      itm_setAdd(); itm_load();
+    }
+    function bindSuppliers(){
+      $('sup_add').addEventListener('click', sup_add);
+      $('map_link').addEventListener('click', map_add);
+      $('map_refresh').addEventListener('click', map_list);
+    }
+    function bindInward(){
+      $('inw_boxes').addEventListener('input', inw_buildBoxInputs);
+      $('inw_total').addEventListener('input', inw_updateSum);
+      $('inw_item').addEventListener('change', inw_buildBoxInputs);
+      $('inw_date').addEventListener('input', inw_buildBoxInputs);
+      $('inw_preview').addEventListener('click', ()=>inw_renderPreview(inw_buildPreview()));
+      $('inw_save').addEventListener('click', inw_saveBatch);
+    }
+    function bindConsumption(){
+      $('con_category').addEventListener('change', con_loadItems);
+      $('con_load').addEventListener('click', con_loadBoxes);
+      $('con_post').addEventListener('click', con_post);
+      $('con_date').value = new Date().toISOString().slice(0,10);
+    }
 
-    document.getElementById('items-body').addEventListener('click', (e) => {
-      if (e.target?.classList.contains('editBtn')) setFormForEdit(e.target.closest('tr'));
-    });
+    async function initSharedCombos(){
+      const items = await loadItemsInto('inw_item');
+      await loadSuppliersInto('inw_supplier','Select supplier…');
+      await loadItemsInto('map_item'); await loadSuppliersInto('map_supplier'); await map_list();
+      await sup_list();
+      // For consumption cascading filters:
+      await con_loadCategories();
+    }
 
-    // Init
-    setFormForAdd();
-    loadItems();
+    function initRouter(){
+      qsa('.tab').forEach(t=>t.addEventListener('click', (e)=>{ e.preventDefault(); const r=t.dataset.route; showPage(r); }));
+      const initial = (location.hash||'#dashboard').replace('#','');
+      showPage(['dashboard','items','inward','consumption','suppliers'].includes(initial)?initial:'dashboard');
+    }
+
+    (async function boot(){
+      initRouter();
+      bindItemMaster();
+      bindInward();
+      bindConsumption();
+      bindSuppliers();
+      await initSharedCombos();
+      $('inw_date').value = new Date().toISOString().slice(0,10);
+    })();
   </script>
 </body>
 </html>
