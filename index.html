@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SCI — Item Master</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; max-width: 1000px; margin: auto; }
+    h1 { margin: 0 0 12px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #fafafa; position: sticky; top: 0; }
+    input, select, button, textarea { padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+    button { cursor: pointer; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; }
+    .grow { flex: 1 1 240px; }
+    .muted { color:#666; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>SCI — Item Master</h1>
+  <p class="muted">View and add items. (Dev mode: no login)</p>
+
+  <div class="card">
+    <h3>Add Item</h3>
+    <div class="row">
+      <input id="item_id" class="grow" placeholder="Item ID / Code (unique)" />
+      <input id="item_name" class="grow" placeholder="Item Name" />
+      <input id="category" class="grow" placeholder="Category" />
+      <input id="uom" style="width:120px" value="kg" placeholder="UOM" />
+      <input id="min_stock" style="width:140px" type="number" step="0.01" placeholder="Min Stock" />
+      <select id="is_active" style="width:140px">
+        <option value="true" selected>Active</option>
+        <option value="false">Inactive</option>
+      </select>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <textarea id="description" class="grow" rows="3" placeholder="Description"></textarea>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button id="addBtn">Add Item</button>
+      <span id="msg" class="muted"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Items</h3>
+    <div class="row" style="margin-bottom:8px;">
+      <input id="search" class="grow" placeholder="Search by name/category/id…" />
+      <button id="refreshBtn">Refresh</button>
+      <button id="exportBtn">Export CSV</button>
+      <span id="count" class="muted"></span>
+    </div>
+    <div style="max-height:60vh; overflow:auto;">
+      <table>
+        <thead>
+        <tr>
+          <th>Item ID</th><th>Name</th><th>Category</th><th>UOM</th>
+          <th>Min</th><th>Active</th><th>Description</th><th>Created</th>
+        </tr>
+        </thead>
+        <tbody id="items-body">
+          <tr><td colspan="8">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Supabase client CDN -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
+  <script>
+    // Your Supabase project (dev: open RLS)
+    const SUPABASE_URL = "https://yqhqgazjeickimatlhzj.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxaHFnYXpqZWlja2ltYXRsaHpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3OTY2ODQsImV4cCI6MjA3MDM3MjY4NH0.HtIpN0YYT24DrEgpBUyEg-V6vkn3_tlqy9DZfScgjt8";
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const $ = id => document.getElementById(id);
+
+    async function loadItems() {
+      const tbody = $('items-body');
+      const search = $('search').value.trim();
+      tbody.innerHTML = '<tr><td colspan="8">Loading…</td></tr>';
+
+      let query = client.from('items').select('*').order('created_at', { ascending: false });
+
+      if (search) {
+        query = client
+          .from('items')
+          .select('*')
+          .or(`item_id.ilike.%${search}%,item_name.ilike.%${search}%,category.ilike.%${search}%`)
+          .order('created_at', { ascending: false });
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="8">Error: ${error.message}</td></tr>`;
+        return;
+      }
+      $('count').textContent = data ? `${data.length} item(s)` : '0 item';
+
+      if (!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8">No items yet.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = data.map(r => `
+        <tr>
+          <td>${r.item_id}</td>
+          <td>${r.item_name}</td>
+          <td>${r.category ?? ''}</td>
+          <td>${r.uom ?? ''}</td>
+          <td>${r.min_stock ?? ''}</td>
+          <td>${r.is_active ? 'Yes' : 'No'}</td>
+          <td>${(r.description || '').replace(/\n/g, '<br>')}</td>
+          <td>${new Date(r.created_at).toLocaleString()}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function addItem() {
+      const msg = $('msg');
+      msg.textContent = 'Saving…';
+
+      const payload = {
+        item_id: $('item_id').value.trim(),
+        item_name: $('item_name').value.trim(),
+        category: $('category').value.trim() || null,
+        description: $('description').value.trim() || null,
+        uom: $('uom').value.trim() || 'kg',
+        min_stock: Number($('min_stock').value || 0),
+        is_active: $('is_active').value === 'true'
+      };
+
+      if (!payload.item_id || !payload.item_name) { msg.textContent = 'Item ID and Name are required.'; return; }
+
+      const { error } = await client.from('items').insert([payload]);
+      if (error) { msg.textContent = 'Error: ' + error.message; return; }
+
+      msg.textContent = 'Added!';
+      ['item_id','item_name','category','description','min_stock'].forEach(id => $(id).value='');
+      await loadItems();
+    }
+
+    function exportCSV(rows) {
+      const header = ['item_id','item_name','category','uom','min_stock','is_active','description','created_at'];
+      const lines = [header.join(',')].concat(rows.map(r => {
+        const vals = header.map(k => {
+          let v = r[k];
+          if (v === null || v === undefined) return '';
+          if (typeof v === 'string') v = '"' + v.replace(/"/g, '""') + '"';
+          return v;
+        });
+        return vals.join(',');
+      }));
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'items_export.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function handleExport() {
+      const { data, error } = await client.from('items').select('*').order('created_at', { ascending:false });
+      if (error) { alert('Export error: ' + error.message); return; }
+      exportCSV(data || []);
+    }
+
+    // Bind events
+    $('addBtn').addEventListener('click', addItem);
+    $('refreshBtn').addEventListener('click', loadItems);
+    $('exportBtn').addEventListener('click', handleExport);
+    $('search').addEventListener('input', () => { clearTimeout(window.__t); window.__t=setTimeout(loadItems, 300); });
+
+    loadItems();
+  </script>
+</body>
+</html>
