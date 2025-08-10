@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SCI — Consumption (OUT)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; max-width: 1100px; margin: auto; }
+    h1 { margin: 0 0 12px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    input, textarea, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+    button { cursor: pointer; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; }
+    .grow { flex:1 1 240px; }
+    .muted { color:#666; font-size:14px; }
+    table { width:100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align:left; }
+    th { background:#fafafa; }
+    .right { text-align:right; }
+    .warn { color:#c60; font-weight:600; }
+    /* Nav */
+    nav { display:flex; gap:12px; align-items:center; margin-bottom:16px; }
+    .tab { padding:8px 12px; border:1px solid #e5e5e5; border-radius:10px; text-decoration:none; color:#222; }
+    .tab:hover { background:#f7f7f7; }
+    .tab.active { background:#111; color:#fff; border-color:#111; }
+    .spacer { flex:1; }
+  </style>
+</head>
+<body>
+  <!-- NAV -->
+  <nav>
+    <a class="tab" href="/index.html">Item Master</a>
+    <a class="tab" href="/batches.html">Receive (Batches)</a>
+    <a class="tab active" href="/consumption.html">Consumption</a>
+    <a class="tab" href="/suppliers.html" title="Coming soon">Suppliers</a>
+    <span class="spacer"></span>
+  </nav>
+
+  <h1>SCI — Consumption (OUT)</h1>
+  <p class="muted">Pick an item, see box-wise remaining quantity, enter consumption per box, and post OUT movements.</p>
+
+  <div class="card">
+    <div class="row">
+      <select id="itemSelect" class="grow"></select>
+      <input id="dateOut" type="date" class="grow" />
+      <input id="useField" class="grow" placeholder="Use / Job / Department" />
+      <input id="comments" class="grow" placeholder="Comments (optional)" />
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button id="loadBtn">Load Boxes</button>
+      <button id="postBtn">Post Consumption</button>
+      <span id="msg" class="muted"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Available Boxes</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Serial</th><th>Batch</th><th class="right">Qty In</th><th class="right">Qty Out</th><th class="right">Remaining</th><th class="right">Consume Now</th>
+        </tr>
+      </thead>
+      <tbody id="boxBody"><tr><td colspan="6" class="muted">Select an item and click “Load Boxes”.</td></tr></tbody>
+      <tfoot>
+        <tr><th colspan="4" class="right">Total to consume</th><th class="right" id="tConsume">0</th><th></th></tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- Supabase -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
+  <script>
+    const SUPABASE_URL = "https://yifgximvlqblnvxsmizx.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpZmd4aW12bHFibG52eHNtaXp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4MDIwNjMsImV4cCI6MjA3MDM3ODA2M30.Q6Bb7GCsZLSz-pjzHi0T-FTRx1uWkb1zu68AGnCiUhw";
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const $ = id => document.getElementById(id);
+    function toISODate(d){ return new Date(d).toISOString(); }
+    function fmt(n, d=2){ if(n==null||isNaN(n)) return '0'; return Number(n).toFixed(d); }
+
+    async function loadItems() {
+      const sel = $('itemSelect');
+      sel.innerHTML = '<option>Loading items…</option>';
+      const { data, error } = await client.from('items').select('id,item_id,item_name').order('item_id');
+      if (error) { sel.innerHTML = '<option>Error loading items</option>'; return; }
+      sel.innerHTML = '<option value="">Select item…</option>' + data.map(r =>
+        `<option value="${r.id}" data-code="${r.item_id}">${r.item_id} — ${r.item_name}</option>`
+      ).join('');
+    }
+
+    function groupOutBySerial(outRows){
+      const map = new Map();
+      for (const r of outRows) {
+        const key = r.serial_no || '';
+        map.set(key, (map.get(key)||0) + Number(r.quantity || 0));
+      }
+      return map;
+    }
+
+    async function loadBoxes() {
+      const msg = $('msg'); msg.textContent = '';
+      const itemId = $('itemSelect').value;
+      if (!itemId) { msg.textContent = 'Select an item.'; return; }
+
+      // Fetch all IN boxes for the item
+      const { data: inRows, error: inErr } = await client
+        .from('movements')
+        .select('id, batch_id, serial_no, quantity')
+        .eq('item_id', itemId)
+        .eq('movement_type', 'IN')
+        .order('movement_date', { ascending: true });
+      if (inErr) { msg.textContent = 'Error loading IN lines: ' + inErr.message; return; }
+
+      // Fetch all OUT rows for the same item to compute remaining
+      const { data: outRows, error: outErr } = await client
+        .from('movements')
+        .select('serial_no, quantity')
+        .eq('item_id', itemId)
+        .eq('movement_type', 'OUT');
+      if (outErr) { msg.textContent = 'Error loading OUT lines: ' + outErr.message; return; }
+
+      const outMap = groupOutBySerial(outRows || []);
+      renderBoxes(inRows || [], outMap);
+    }
+
+    async function fetchBatchShort(batchId) {
+      if (!batchId) return '';
+      const { data, error } = await client.from('batches').select('item_received_date').eq('id', batchId).single();
+      if (error || !data) return '';
+      return (data.item_received_date || '').replaceAll('-',''); // YYYYMMDD
+    }
+
+    async function renderBoxes(inRows, outMap){
+      const tbody = $('boxBody');
+      if (!inRows.length) { tbody.innerHTML = '<tr><td colspan="6" class="muted">No IN lines for this item.</td></tr>'; return; }
+
+      // Preload batch codes (date-based short)
+      const batchShortById = {};
+      const uniqueBatchIds = [...new Set(inRows.map(r => r.batch_id).filter(Boolean))];
+      for (const bId of uniqueBatchIds) {
+        batchShortById[bId] = await fetchBatchShort(bId);
+      }
+
+      tbody.innerHTML = inRows.map(r => {
+        const qtyIn = Number(r.quantity || 0);
+        const qtyOut = Number(outMap.get(r.serial_no || '') || 0);
+        const rem = Math.max(0, qtyIn - qtyOut);
+        const batchShort = batchShortById[r.batch_id] || '';
+        return `
+          <tr data-serial="${r.serial_no||''}">
+            <td>${r.serial_no||''}</td>
+            <td>${batchShort}</td>
+            <td class="right">${fmt(qtyIn, 3)}</td>
+            <td class="right">${fmt(qtyOut, 3)}</td>
+            <td class="right">${fmt(rem, 3)}</td>
+            <td class="right"><input data-rem="${rem}" type="number" step="0.001" min="0" max="${rem}" style="width:100px" class="cons"></td>
+          </tr>
+        `;
+      }).join('');
+
+      updateTotalConsume();
+      // Bind inputs to keep running total
+      for (const inp of tbody.querySelectorAll('input.cons')) {
+        inp.addEventListener('input', updateTotalConsume);
+      }
+    }
+
+    function updateTotalConsume() {
+      const inputs = document.querySelectorAll('input.cons');
+      let total = 0;
+      for (const i of inputs) {
+        const n = Number(i.value || 0);
+        const rem = Number(i.dataset.rem || 0);
+        if (n > rem) i.value = rem; // clamp
+        if (!isNaN(n) && n > 0) total += n;
+      }
+      $('tConsume').textContent = fmt(total, 3);
+    }
+
+    async function postConsumption() {
+      const msg = $('msg'); msg.textContent = 'Posting…';
+
+      const itemId = $('itemSelect').value;
+      if (!itemId) { msg.textContent = 'Select an item.'; return; }
+
+      const dateOut = $('dateOut').value;
+      if (!dateOut) { msg.textContent = 'Pick an OUT date.'; return; }
+
+      const useField = $('useField').value.trim() || null;
+      const comments = $('comments').value.trim() || null;
+
+      // Build OUT rows
+      const rows = [];
+      const trList = [...document.querySelectorAll('#boxBody tr[data-serial]')];
+      for (const tr of trList) {
+        const serial = tr.dataset.serial || '';
+        const inp = tr.querySelector('input.cons');
+        const qty = Number(inp?.value || 0);
+        const rem = Number(inp?.dataset.rem || 0);
+        if (qty > 0) {
+          if (qty > rem) { msg.textContent = `Qty exceeds remaining for ${serial}.`; return; }
+          rows.push({
+            item_id: itemId,
+            movement_type: 'OUT',
+            movement_date: toISODate(dateOut),
+            quantity: qty,
+            serial_no: serial,
+            "use": useField,
+            comments
+          });
+        }
+      }
+      if (!rows.length) { msg.textContent = 'Enter consumption for at least one box.'; return; }
+
+      const { error } = await client.from('movements').insert(rows);
+      if (error) { msg.textContent = 'Error: ' + error.message; return; }
+      msg.textContent = `Posted ${rows.length} OUT lines.`;
+
+      // Reload boxes to refresh remaining
+      await loadBoxes();
+    }
+
+    // Init
+    (function init(){
+      const today = new Date().toISOString().slice(0,10);
+      $('dateOut').value = today;
+      loadItems();
+      $('loadBtn').addEventListener('click', loadBoxes);
+      $('postBtn').addEventListener('click', postConsumption);
+    })();
+  </script>
+</body>
+</html>
