@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SCI — Batches (Receive)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; max-width: 1000px; margin: auto; }
+    h1 { margin: 0 0 12px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    input, textarea, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+    button { cursor: pointer; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; }
+    .grow { flex:1 1 220px; }
+    .muted { color:#666; font-size:14px; }
+    table { width:100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align:left; }
+  </style>
+</head>
+<body>
+  <h1>SCI — Receive Batch</h1>
+  <p class="muted">Create a batch and auto-create box-wise IN lines in Movements.</p>
+
+  <div class="card">
+    <h3>Batch Details</h3>
+    <div class="row">
+      <select id="itemSelect" class="grow"></select>
+      <input id="receivedDate" type="date" class="grow" />
+      <input id="basicRate" type="number" step="0.01" placeholder="Basic rate / UOM (₹)" class="grow" />
+      <input id="transportTotal" type="number" step="0.01" placeholder="Total transport (₹)" class="grow" />
+      <input id="totalQty" type="number" step="0.01" placeholder="Total quantity (e.g., 500)" class="grow" />
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <textarea id="supplier" class="grow" rows="2" placeholder="Supplier details"></textarea>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <textarea id="boxWeights" class="grow" rows="3" placeholder="Box weights (comma-separated), e.g. 100,100,100,100,100"></textarea>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button id="saveBatchBtn">Save Batch & Create IN Lines</button>
+      <span id="msg" class="muted"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Recent Movements (this session)</h3>
+    <table>
+      <thead><tr><th>Serial</th><th>Item</th><th>Qty</th><th>Unit cost</th><th>Total</th></tr></thead>
+      <tbody id="movBody"><tr><td colspan="5" class="muted">No entries yet.</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- Supabase -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
+  <script>
+    const SUPABASE_URL = "https://yifgximvlqblnvxsmizx.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpZmd4aW12bHFibG52eHNtaXp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4MDIwNjMsImV4cCI6MjA3MDM3ODA2M30.Q6Bb7GCsZLSz-pjzHi0T-FTRx1uWkb1zu68AGnCiUhw";
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const $ = id => document.getElementById(id);
+    function pad(n, w=3){ return String(n).padStart(w,'0'); }
+
+    async function loadItems() {
+      const sel = $('itemSelect');
+      sel.innerHTML = '<option>Loading items…</option>';
+      const { data, error } = await client.from('items').select('id,item_id,item_name,uom').order('item_id');
+      if (error) { sel.innerHTML = '<option>Error loading items</option>'; return; }
+      sel.innerHTML = '<option value="">Select item…</option>' + data.map(r =>
+        `<option value="${r.id}" data-code="${r.item_id}" data-name="${r.item_name}" data-uom="${r.uom||''}">
+          ${r.item_id} — ${r.item_name}
+        </option>`).join('');
+    }
+
+    async function saveBatch() {
+      const msg = $('msg'); msg.textContent = 'Saving…';
+      const itemId = $('itemSelect').value;
+      if (!itemId) { msg.textContent = 'Select an item.'; return; }
+
+      const receivedDate = $('receivedDate').value;
+      const basicRate = Number($('basicRate').value || 0);
+      const transportTotal = Number($('transportTotal').value || 0);
+      const totalQty = Number($('totalQty').value || 0);
+      const supplier = $('supplier').value.trim();
+      const weights = $('boxWeights').value.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n) && n>0);
+
+      if (!receivedDate || totalQty <= 0 || weights.length === 0) {
+        msg.textContent = 'Enter date, total qty, and box weights list.';
+        return;
+      }
+      const sumWeights = weights.reduce((a,b)=>a+b,0);
+      if (Math.abs(sumWeights - totalQty) > 0.0001) {
+        msg.textContent = `Sum of box weights (${sumWeights}) must equal total quantity (${totalQty}).`;
+        return;
+      }
+
+      // Create batch
+      const { data: batchRows, error: batchErr } = await client.from('batches').insert([{
+        item_id: itemId,
+        item_received_date: receivedDate,
+        supplier_details: supplier || null,
+        basic_rate: basicRate || null,
+        transport_cost_total: transportTotal || null,
+        total_quantity: totalQty
+      }]).select('id');
+      if (batchErr) { msg.textContent = 'Batch error: ' + batchErr.message; return; }
+      const batchId = batchRows[0].id;
+
+      // Cost allocation
+      const transportPerKg = transportTotal && totalQty ? (transportTotal / totalQty) : 0;
+      const unitCost = (kg) => (basicRate || 0) + transportPerKg;
+
+      // Serial base: ITEMCODE-YYYYMMDD
+      const opt = $('itemSelect').selectedOptions[0];
+      const itemCode = opt.dataset.code;
+      const serialBase = `${itemCode}-${receivedDate.replaceAll('-','')}`;
+
+      // Create IN lines in movements
+      const rows = weights.map((w,i) => ({
+        item_id: itemId,
+        batch_id: batchId,
+        movement_type: 'IN',
+        movement_date: new Date(receivedDate).toISOString(),
+        quantity: w,
+        unit_basic_rate: basicRate || null,
+        unit_transport_rate: transportPerKg || null,
+        unit_cost: unitCost(w),
+        total_value: unitCost(w) * w,
+        serial_no: `${serialBase}-${pad(i+1)}`,
+        box_no: i+1,
+        comments: 'Box received'
+      }));
+
+      const { error: movErr } = await client.from('movements').insert(rows);
+      if (movErr) { msg.textContent = 'Movements error: ' + movErr.message; return; }
+
+      msg.textContent = `Saved. Created ${rows.length} IN lines.`;
+      renderRecent(rows, opt.dataset.name);
+      // Clear form
+      // $('boxWeights').value = ''; // keep for reference
+    }
+
+    function renderRecent(rows, itemName){
+      const tbody = $('movBody');
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${r.serial_no}</td>
+          <td>${itemName}</td>
+          <td>${r.quantity}</td>
+          <td>${(r.unit_cost ?? 0).toFixed(2)}</td>
+          <td>${(r.total_value ?? 0).toFixed(2)}</td>
+        </tr>
+      `).join('');
+    }
+
+    $('saveBatchBtn').addEventListener('click', saveBatch);
+    loadItems();
+  </script>
+</body>
+</html>
