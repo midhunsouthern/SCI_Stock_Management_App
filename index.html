@@ -6,14 +6,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root{
-      /* Neutral palette; we can swap to SouthernCoil branding later */
-      --bg:#fff; --text:#222; --muted:#666; --border:#e5e5e5; --alt:#fafafa;
-      --brand:#111; --brand-contrast:#fff;
-      --danger:#9f1c28; --danger-bg:#fde7ea; --warn:#9a5a00; --warn-bg:#fff1e5; --ok:#146c2e; --ok-bg:#e8f7ee;
+      /* Southern Coil look (from site visuals: dark/white with orange accents) */
+      --bg:#ffffff;
+      --text:#1a1a1a;           /* near-black body text */
+      --muted:#666666;          /* secondary text */
+      --border:#e6e6e6;         /* light borders */
+      --alt:#fafafa;            /* table header / cards alt */
+
+      --brand:#111111;          /* charcoal header / active tab */
+      --brand-contrast:#ffffff; /* on brand */
+
+      --accent:#ff6a00;         /* CTA orange (buttons, focus) */
+      --accent-contrast:#ffffff;
+
+      /* states */
+      --danger:#9f1c28; --danger-bg:#fde7ea;
+      --warn:#9a5a00;   --warn-bg:#fff1e5;
+      --ok:#146c2e;     --ok-bg:#e8f7ee;
     }
     * { box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color:var(--text);
-           margin:0; background:var(--bg); }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
+      color:var(--text); margin:0; background:var(--bg);
+    }
     .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
     h1,h2,h3 { margin: 0 0 12px; }
     p { margin: 0 0 12px; }
@@ -21,10 +36,17 @@
     .card { border:1px solid var(--border); border-radius:12px; padding:16px; background:#fff; margin:12px 0; }
     .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; }
     .grow { flex:1 1 240px; }
-    input,select,textarea,button { padding:8px; border:1px solid #ccc; border-radius:8px; font: inherit; }
-    button { cursor:pointer; }
+
+    input,select,textarea,button {
+      padding:10px 12px; border:1px solid #cfcfcf; border-radius:10px; font: inherit; outline: none;
+    }
+    input:focus,select:focus,textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,106,0,0.15); }
+    button { cursor:pointer; background: var(--accent); color: var(--accent-contrast); border: 1px solid var(--accent); }
+    button:hover { filter: brightness(0.96); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
     table { width:100%; border-collapse:collapse; }
-    th,td { padding:8px; border-bottom:1px solid #eee; text-align:left; vertical-align:top; }
+    th,td { padding:10px; border-bottom:1px solid #eee; text-align:left; vertical-align:top; }
     th { background:var(--alt); }
     .right { text-align:right; }
     .hidden { display:none !important; }
@@ -35,25 +57,35 @@
 
     /* Top nav (tabs) */
     .topnav { position:sticky; top:0; z-index:10; background:var(--bg); border-bottom:1px solid var(--border); }
-    .tabs { display:flex; gap:8px; align-items:center; padding:12px 24px; max-width:1200px; margin:0 auto; }
-    .tab { padding:8px 12px; border:1px solid var(--border); border-radius:10px; text-decoration:none; color:var(--text); }
+    .tabs { display:flex; gap:8px; align-items:center; padding:14px 24px; max-width:1200px; margin:0 auto; }
+    .tab {
+      padding:10px 14px; border:1px solid var(--border); border-radius:12px; text-decoration:none; color:var(--text);
+      transition: background .15s ease, border-color .15s ease, color .15s ease;
+    }
     .tab:hover { background:#f7f7f7; }
     .tab.active { background:var(--brand); color:var(--brand-contrast); border-color:var(--brand); }
     .spacer { flex:1; }
-    .brand { font-weight:700; }
+    .brand { font-weight:800; letter-spacing:.2px; }
+
+    /* Accent buttons (secondary) */
+    .btn-secondary { background:#fff; color:var(--text); border-color:#cfcfcf; }
+    .btn-secondary:hover { background:#f7f7f7; }
 
     /* Helpers */
     .danger-text { color:var(--danger); }
     .warn-text { color:var(--warn); }
     .ok-text { color:var(--ok); }
-    .dashed { border:1px dashed #ccc; padding:24px; border-radius:8px; background:#fafafa; text-align:center; }
+    .dashed { border:1px dashed #ccc; padding:24px; border-radius:10px; background:#fafafa; text-align:center; }
 
     /* Material Inward live total bar */
-    .totalbar { padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:#fff; }
+    .totalbar { padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:#fff; }
     .totalbar.bad { background:var(--danger-bg); border-color:var(--danger); }
-    .serialbox { display:grid; grid-template-columns: 120px 1fr 120px; gap:8px; align-items:center; }
-    .serial { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight:600; }
+    .serialbox { display:grid; grid-template-columns: 160px 1fr 80px; gap:10px; align-items:center; }
+    .serial { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight:700; }
     .scroll { max-height:60vh; overflow:auto; }
+
+    /* Small label style for UI hints */
+    .hint { font-size:12px; color:var(--muted); }
   </style>
 </head>
 <body>
@@ -67,7 +99,6 @@
       <a class="tab" data-route="consumption" href="#consumption">Consumption</a>
       <a class="tab" data-route="suppliers" href="#suppliers">Suppliers</a>
       <span class="spacer"></span>
-      <!-- (Optional future) Login/Profile -->
     </div>
   </div>
 
@@ -103,7 +134,7 @@
         <div class="row" style="margin-top:8px;">
           <button id="itm_addBtn">Add Item</button>
           <button id="itm_saveBtn" class="hidden">Save Changes</button>
-          <button id="itm_cancelBtn" class="hidden">Cancel</button>
+          <button id="itm_cancelBtn" class="btn-secondary hidden">Cancel</button>
           <span id="itm_msg" class="muted"></span>
         </div>
       </div>
@@ -112,8 +143,8 @@
         <h3>Items</h3>
         <div class="row" style="margin-bottom:8px;">
           <input id="itm_search" class="grow" placeholder="Search by name/category/id…" />
-          <button id="itm_refreshBtn">Refresh</button>
-          <button id="itm_exportBtn">Export CSV</button>
+          <button id="itm_refreshBtn" class="btn-secondary">Refresh</button>
+          <button id="itm_exportBtn" class="btn-secondary">Export CSV</button>
           <span id="itm_count" class="muted"></span>
         </div>
         <div class="scroll">
@@ -153,11 +184,11 @@
 
       <div class="card">
         <h3>Packages</h3>
-        <p class="muted">Enter each box weight, press <b>TAB</b> to jump quickly. Save is blocked until sum of weights equals total quantity.</p>
+        <p class="hint">Enter each box weight, press <b>TAB</b> to jump quickly. Save is blocked until sum of weights equals total quantity.</p>
         <div id="inw_totalbar" class="totalbar">Total: <b id="inw_sum">0</b> / <b id="inw_target">0</b></div>
         <div id="inw_boxes_wrap" class="scroll" style="margin-top:8px;"></div>
         <div class="row" style="margin-top:8px;">
-          <button id="inw_preview">Preview Costs</button>
+          <button id="inw_preview" class="btn-secondary">Preview Costs</button>
           <button id="inw_save">Save Batch & Create IN Lines</button>
           <span id="inw_done" class="muted"></span>
         </div>
@@ -193,7 +224,7 @@
           <input id="con_comments" class="grow" placeholder="Comments (optional)" />
         </div>
         <div class="row" style="margin-top:8px;">
-          <button id="con_load">Load Boxes</button>
+          <button id="con_load" class="btn-secondary">Load Boxes</button>
           <button id="con_post">Post Consumption</button>
           <span id="con_msg" class="muted"></span>
         </div>
@@ -268,7 +299,7 @@
         <h3>Item ↔ Supplier Map</h3>
         <div class="row" style="margin-bottom:8px;">
           <select id="map_filter_item" class="grow"></select>
-          <button id="map_refresh">Refresh</button>
+          <button id="map_refresh" class="btn-secondary">Refresh</button>
         </div>
         <div class="scroll">
           <table>
@@ -329,9 +360,9 @@
           <td>${r.uom??''}</td>
           <td>${r.min_stock??''}</td>
           <td>${r.is_active?'Yes':'No'}</td>
-          <td>${(r.description||'').replace(/\n/g,'<br>')}</td>
+          <td>${(r.description||'').replace(/\\n/g,'<br>')}</td>
           <td>${new Date(r.created_at).toLocaleString()}</td>
-          <td><button class="itm_edit">Edit</button></td>
+          <td><button class="itm_edit btn-secondary">Edit</button></td>
         </tr>
       `).join('');
     }
@@ -395,7 +426,7 @@
       const lines=[header.join(',')].concat((data||[]).map(r=>header.map(k=>{
         let v=r[k]; if(v==null) return ''; if(typeof v==='string') v='"'+v.replace(/"/g,'""')+'"'; return v;
       }).join(',')));
-      const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+      const blob=new Blob([lines.join('\\n')],{type:'text/csv;charset=utf-8;'});
       const url=URL.createObjectURL(blob); const a=document.createElement('a');
       a.href=url; a.download='items_export.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     }
@@ -585,13 +616,11 @@
       if(inErr){ msg.textContent='Error loading IN lines: '+inErr.message; return; }
       if(outErr){ msg.textContent='Error loading OUT lines: '+outErr.message; return; }
       const outMap=con_groupOutBySerial(outRows);
-      // Filter: show only non-zero balance rows
       const filtered = (inRows||[]).map(r=>{
         const inq=Number(r.quantity||0), outq=Number(outMap.get(r.serial_no||'')||0);
         const rem=Math.max(0, inq - outq);
         return { ...r, qty_in: inq, qty_out: outq, rem };
       }).filter(r=>r.rem>0.0001);
-
       await con_renderBoxes(filtered);
     }
     async function con_fetchBatchShort(batchId){
@@ -672,8 +701,7 @@
       await loadSuppliersInto('inw_supplier','Select supplier…');
       await loadItemsInto('map_item'); await loadSuppliersInto('map_supplier'); await map_list();
       await sup_list();
-      // For consumption cascading filters:
-      await con_loadCategories();
+      await con_loadCategories(); // for cascading filter
     }
 
     function initRouter(){
