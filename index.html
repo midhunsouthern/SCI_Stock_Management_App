@@ -16,9 +16,25 @@
     .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; }
     .grow { flex: 1 1 240px; }
     .muted { color:#666; font-size: 14px; }
+
+    /* Nav */
+    nav { display:flex; gap:12px; align-items:center; margin-bottom:16px; }
+    .tab { padding:8px 12px; border:1px solid #e5e5e5; border-radius:10px; text-decoration:none; color:#222; }
+    .tab:hover { background:#f7f7f7; }
+    .tab.active { background:#111; color:#fff; border-color:#111; }
+    .spacer { flex:1; }
   </style>
 </head>
 <body>
+  <!-- NAV -->
+  <nav>
+    <a class="tab active" href="/index.html">Item Master</a>
+    <a class="tab" href="/batches.html">Receive (Batches)</a>
+    <a class="tab" href="/consumption.html" title="Coming soon">Consumption</a>
+    <a class="tab" href="/suppliers.html" title="Coming soon">Suppliers</a>
+    <span class="spacer"></span>
+  </nav>
+
   <h1>SCI — Item Master</h1>
   <p class="muted">View and add items. (Dev mode: no login)</p>
 
@@ -70,9 +86,8 @@
   <!-- Supabase client CDN -->
   <script src="https://unpkg.com/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
   <script>
-    // Your Supabase project (dev: open RLS)
     const SUPABASE_URL = "https://yifgximvlqblnvxsmizx.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpZmd4aW12bHFibG52eHNtaXp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4MDIwNjMsImV4cCI6MjA3MDM3ODA2M30.Q6Bb7GCsZLSz-pjzHi0T-FTRx1uWkb1zu68AGnCiUhw";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpZmd4aW12bHFibG52eHNtaXp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4MDIwNjMsImV4cCI6MjA3MDM3ODA2M30.Q6Bb7GCsZLSz-pjzHi0T-FTRx1uWkb1zu68AGnCiUhw";
     const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const $ = id => document.getElementById(id);
