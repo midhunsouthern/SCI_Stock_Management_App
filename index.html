@@ -5,23 +5,30 @@
   <title>SCI — Item Master</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; max-width: 1000px; margin: auto; }
+    :root{
+      --text:#222; --muted:#666; --border:#e5e5e5; --bg:#fff; --bg-alt:#fafafa;
+      --brand:#111; --brand-contrast:#fff;
+    }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color:var(--text);
+           padding: 24px; max-width: 1100px; margin: auto; background:var(--bg); }
     h1 { margin: 0 0 12px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    .card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin: 12px 0; background:#fff; }
     table { width: 100%; border-collapse: collapse; }
     th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; vertical-align: top; }
-    th { background: #fafafa; position: sticky; top: 0; }
-    input, select, button, textarea { padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+    th { background: var(--bg-alt); position: sticky; top: 0; }
+    input, select, button, textarea { padding: 8px; border: 1px solid #ccc; border-radius: 8px; font: inherit; }
     button { cursor: pointer; }
     .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; }
     .grow { flex: 1 1 240px; }
-    .muted { color:#666; font-size: 14px; }
+    .muted { color:var(--muted); font-size: 14px; }
+    .hidden { display:none; }
 
     /* Nav */
     nav { display:flex; gap:12px; align-items:center; margin-bottom:16px; }
-    .tab { padding:8px 12px; border:1px solid #e5e5e5; border-radius:10px; text-decoration:none; color:#222; }
+    .tab { padding:8px 12px; border:1px solid var(--border); border-radius:10px;
+           text-decoration:none; color:var(--text); }
     .tab:hover { background:#f7f7f7; }
-    .tab.active { background:#111; color:#fff; border-color:#111; }
+    .tab.active { background:var(--brand); color:var(--brand-contrast); border-color:var(--brand); }
     .spacer { flex:1; }
   </style>
 </head>
@@ -29,17 +36,18 @@
   <!-- NAV -->
   <nav>
     <a class="tab active" href="/index.html">Item Master</a>
-    <a class="tab" href="/batches.html">Receive (Batches)</a>
-    <a class="tab" href="/consumption.html" title="Coming soon">Consumption</a>
-    <a class="tab" href="/suppliers.html" title="Coming soon">Suppliers</a>
+    <a class="tab" href="/batches.html">Material Inward</a>
+    <a class="tab" href="/consumption.html">Consumption</a>
+    <a class="tab" href="/suppliers.html">Suppliers</a>
     <span class="spacer"></span>
+    <a class="tab" href="/dashboard.html">Dashboard</a>
   </nav>
 
   <h1>SCI — Item Master</h1>
-  <p class="muted">View and add items. (Dev mode: no login)</p>
+  <p class="muted">View, add, and edit items. (Dev mode: no login)</p>
 
   <div class="card">
-    <h3>Add Item</h3>
+    <h3>Add / Edit Item</h3>
     <div class="row">
       <input id="item_id" class="grow" placeholder="Item ID / Code (unique)" />
       <input id="item_name" class="grow" placeholder="Item Name" />
@@ -56,6 +64,8 @@
     </div>
     <div class="row" style="margin-top:8px;">
       <button id="addBtn">Add Item</button>
+      <button id="saveBtn" class="hidden">Save Changes</button>
+      <button id="cancelBtn" class="hidden">Cancel</button>
       <span id="msg" class="muted"></span>
     </div>
   </div>
@@ -71,19 +81,19 @@
     <div style="max-height:60vh; overflow:auto;">
       <table>
         <thead>
-        <tr>
-          <th>Item ID</th><th>Name</th><th>Category</th><th>UOM</th>
-          <th>Min</th><th>Active</th><th>Description</th><th>Created</th>
-        </tr>
+          <tr>
+            <th>Item ID</th><th>Name</th><th>Category</th><th>UOM</th>
+            <th>Min</th><th>Active</th><th>Description</th><th>Created</th><th>Actions</th>
+          </tr>
         </thead>
         <tbody id="items-body">
-          <tr><td colspan="8">Loading…</td></tr>
+          <tr><td colspan="9">Loading…</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
-  <!-- Supabase client CDN -->
+  <!-- Supabase client -->
   <script src="https://unpkg.com/@supabase/supabase-js@2.43.4/dist/umd/supabase.js"></script>
   <script>
     const SUPABASE_URL = "https://yifgximvlqblnvxsmizx.supabase.co";
@@ -91,53 +101,10 @@
     const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const $ = id => document.getElementById(id);
+    let editingId = null;
 
-    async function loadItems() {
-      const tbody = $('items-body');
-      const search = $('search').value.trim();
-      tbody.innerHTML = '<tr><td colspan="8">Loading…</td></tr>';
-
-      let query = client.from('items').select('*').order('created_at', { ascending: false });
-
-      if (search) {
-        query = client
-          .from('items')
-          .select('*')
-          .or(`item_id.ilike.%${search}%,item_name.ilike.%${search}%,category.ilike.%${search}%`)
-          .order('created_at', { ascending: false });
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        tbody.innerHTML = `<tr><td colspan="8">Error: ${error.message}</td></tr>`;
-        return;
-      }
-      $('count').textContent = data ? `${data.length} item(s)` : '0 item';
-
-      if (!data || data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8">No items yet.</td></tr>`;
-        return;
-      }
-      tbody.innerHTML = data.map(r => `
-        <tr>
-          <td>${r.item_id}</td>
-          <td>${r.item_name}</td>
-          <td>${r.category ?? ''}</td>
-          <td>${r.uom ?? ''}</td>
-          <td>${r.min_stock ?? ''}</td>
-          <td>${r.is_active ? 'Yes' : 'No'}</td>
-          <td>${(r.description || '').replace(/\n/g, '<br>')}</td>
-          <td>${new Date(r.created_at).toLocaleString()}</td>
-        </tr>
-      `).join('');
-    }
-
-    async function addItem() {
-      const msg = $('msg');
-      msg.textContent = 'Saving…';
-
-      const payload = {
+    function collectPayload() {
+      return {
         item_id: $('item_id').value.trim(),
         item_name: $('item_name').value.trim(),
         category: $('category').value.trim() || null,
@@ -146,14 +113,90 @@
         min_stock: Number($('min_stock').value || 0),
         is_active: $('is_active').value === 'true'
       };
+    }
 
+    function setFormForAdd() {
+      editingId = null;
+      $('addBtn').classList.remove('hidden');
+      $('saveBtn').classList.add('hidden');
+      $('cancelBtn').classList.add('hidden');
+      $('msg').textContent = '';
+      ['item_id','item_name','category','description','min_stock'].forEach(id => $(id).value='');
+      $('uom').value = $('uom').value || 'kg';
+      $('is_active').value = 'true';
+    }
+
+    function setFormForEdit(row) {
+      editingId = row.dataset.id;
+      const cells = row.children;
+      $('item_id').value = cells[0].textContent.trim();
+      $('item_name').value = cells[1].textContent.trim();
+      $('category').value = cells[2].textContent.trim();
+      $('uom').value = cells[3].textContent.trim();
+      $('min_stock').value = cells[4].textContent.trim();
+      $('is_active').value = (cells[5].textContent.trim() === 'Yes') ? 'true' : 'false';
+      $('description').value = cells[6].innerText || '';
+
+      $('addBtn').classList.add('hidden');
+      $('saveBtn').classList.remove('hidden');
+      $('cancelBtn').classList.remove('hidden');
+      $('msg').textContent = `Editing ${$('item_id').value}`;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function loadItems() {
+      const tbody = $('items-body');
+      const search = $('search').value.trim();
+      tbody.innerHTML = '<tr><td colspan="9">Loading…</td></tr>';
+
+      let query = client.from('items').select('*').order('created_at', { ascending:false });
+      if (search) {
+        query = client.from('items').select('*')
+          .or(`item_id.ilike.%${search}%,item_name.ilike.%${search}%,category.ilike.%${search}%`)
+          .order('created_at', { ascending:false });
+      }
+      const { data, error } = await query;
+      if (error) { tbody.innerHTML = `<tr><td colspan="9">Error: ${error.message}</td></tr>`; return; }
+      $('count').textContent = `${data?.length||0} item(s)`;
+
+      if (!data?.length) { tbody.innerHTML = `<tr><td colspan="9">No items yet.</td></tr>`; return; }
+
+      tbody.innerHTML = data.map(r => `
+        <tr data-id="${r.id}">
+          <td>${r.item_id}</td>
+          <td>${r.item_name}</td>
+          <td>${r.category ?? ''}</td>
+          <td>${r.uom ?? ''}</td>
+          <td>${r.min_stock ?? ''}</td>
+          <td>${r.is_active ? 'Yes' : 'No'}</td>
+          <td>${(r.description||'').replace(/\n/g,'<br>')}</td>
+          <td>${new Date(r.created_at).toLocaleString()}</td>
+          <td><button class="editBtn">Edit</button></td>
+        </tr>
+      `).join('');
+    }
+
+    async function addItem() {
+      const msg = $('msg'); msg.textContent = 'Saving…';
+      const payload = collectPayload();
       if (!payload.item_id || !payload.item_name) { msg.textContent = 'Item ID and Name are required.'; return; }
-
       const { error } = await client.from('items').insert([payload]);
       if (error) { msg.textContent = 'Error: ' + error.message; return; }
-
       msg.textContent = 'Added!';
-      ['item_id','item_name','category','description','min_stock'].forEach(id => $(id).value='');
+      setFormForAdd();
+      await loadItems();
+    }
+
+    async function saveEdit() {
+      const msg = $('msg');
+      if (!editingId) { msg.textContent = 'Nothing to save.'; return; }
+      msg.textContent = 'Saving changes…';
+      const payload = collectPayload();
+      if (!payload.item_id || !payload.item_name) { msg.textContent = 'Item ID and Name are required.'; return; }
+      const { error } = await client.from('items').update(payload).eq('id', editingId);
+      if (error) { msg.textContent = 'Error: ' + error.message; return; }
+      msg.textContent = 'Updated.';
+      setFormForAdd();
       await loadItems();
     }
 
@@ -182,12 +225,20 @@
       exportCSV(data || []);
     }
 
-    // Bind events
+    // Events
     $('addBtn').addEventListener('click', addItem);
+    $('saveBtn').addEventListener('click', saveEdit);
+    $('cancelBtn').addEventListener('click', setFormForAdd);
     $('refreshBtn').addEventListener('click', loadItems);
     $('exportBtn').addEventListener('click', handleExport);
     $('search').addEventListener('input', () => { clearTimeout(window.__t); window.__t=setTimeout(loadItems, 300); });
 
+    document.getElementById('items-body').addEventListener('click', (e) => {
+      if (e.target?.classList.contains('editBtn')) setFormForEdit(e.target.closest('tr'));
+    });
+
+    // Init
+    setFormForAdd();
     loadItems();
   </script>
 </body>
